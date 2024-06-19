@@ -235,15 +235,15 @@ mod royal_rascals {
         // Otherwise, we send the NFT back to the trading account component, where a it could be sent on to another component.
         pub fn pay_royalty(
             &mut self,
-            nft: Bucket,
+            nft: ResourceAddress,
             mut payment: Bucket,
-            mut account: Global<Account>,
+            // mut account: Global<Account>,
         ) -> Bucket {
             let payment_amount = payment.amount();
 
             // check the correct proof has been passed
             assert!(
-                nft.resource_address() == self.rascal_manager.address(),
+                nft == self.rascal_manager.address(),
                 "[pay_royalty] Incorrect resource passed"
             );
 
@@ -271,7 +271,7 @@ mod royal_rascals {
             }
 
             // send nft to account
-            account.try_deposit_or_abort(nft, None);
+            // account.try_deposit_or_abort(nft, None);
 
             // payment minus royalty returned
             payment

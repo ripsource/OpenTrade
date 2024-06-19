@@ -1,3 +1,4 @@
+use scrypto::component::AnyComponent;
 use scrypto_test::prelude::*;
 
 use trader::open_trade_event::*;
@@ -8,7 +9,13 @@ use trader::royal_mint_example::*;
 #[test]
 fn test_hello() {
     // Setup the environment
-    let mut ledger = LedgerSimulatorBuilder::new().without_kernel_trace().build();
+    let mut ledger = LedgerSimulatorBuilder::new()
+        .without_kernel_trace()
+        .with_custom_genesis(CustomGenesis::default(
+            Epoch::of(1),
+            CustomGenesis::default_consensus_manager_config(),
+        ))
+        .build();
 
     // Create an account
     let (public_key, _private_key, account) = ledger.new_allocated_account();
@@ -249,7 +256,7 @@ fn test_hello() {
         .call_method(
             account,
             "withdraw_non_fungibles",
-            manifest_args!(rascal_address, indexset![rascal_local_id]),
+            manifest_args!(rascal_address, indexset![rascal_local_id.clone()]),
         )
         .take_all_from_worktop(rascal_address, "rascal")
         .with_name_lookup(|builder, lookup| {
@@ -277,6 +284,19 @@ fn test_hello() {
     );
 
     receipt.expect_commit_success();
+
+    // advance time by atleast a second before a purchase can be made
+    ledger.advance_to_round_at_timestamp(Round::of(2), 1718832354484);
+    println!(
+        "the time is: {:?}",
+        ledger.get_current_time(TimePrecisionV2::Second)
+    );
+    ledger.advance_to_round_at_timestamp(Round::of(3), 1718832355484);
+    println!(
+        "the time is: {:?}",
+        ledger.get_current_time(TimePrecisionV2::Second)
+    );
+
     print!("listed rascal");
 
     let manifest = ManifestBuilder::new()
@@ -309,6 +329,47 @@ fn test_hello() {
     receipt.expect_commit_success();
 
     println!("purchased rascal");
+
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(
+            account,
+            "create_proof_of_non_fungibles",
+            manifest_args!(trader_key_resource, indexset![trader_key_local.clone()]),
+        )
+        .pop_from_auth_zone("proof1")
+        .call_method(
+            account,
+            "withdraw_non_fungibles",
+            manifest_args!(rascal_address, indexset![rascal_local_id.clone()]),
+        )
+        .take_all_from_worktop(rascal_address, "rascal")
+        .with_name_lookup(|builder, lookup| {
+            builder.call_method(
+                trader_component,
+                "royal_list",
+                manifest_args!(
+                    lookup.bucket("rascal"),
+                    dec!(100),
+                    XRD,
+                    vec![marketplace_key.clone()],
+                    lookup.proof("proof1"),
+                ),
+            )
+        })
+        .call_method(
+            account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    let receipt = ledger.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&public_key)],
+    );
+
+    receipt.expect_commit_success();
+    print!("listed rascal");
 }
 
 // #[test]

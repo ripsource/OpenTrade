@@ -1,3 +1,4 @@
+pub mod generic_dapp;
 pub mod generic_marketplace;
 pub mod niche_marketplace;
 pub mod open_trade_event;
