@@ -1,3 +1,6 @@
-mod openhub;
-mod opentrader_account;
-mod trade_event;
+pub mod generic_marketplace;
+pub mod niche_marketplace;
+pub mod open_trade_event;
+pub mod open_trade_protocol;
+pub mod open_trader_account;
+pub mod royal_mint_example;
