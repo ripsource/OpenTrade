@@ -1,12 +1,23 @@
 use scrypto::prelude::*;
 
+// This blueprint is an example of a way to mint a new NFT collection. However, not all of this is required for a new collection and creators
+// can choose to implement only the parts that are necessary for their use case. This blueprint combines the minting process including a reveal step
+// to allow a creator to reveal the collection after minting, and a royalty payment vault/method to allow collection of royalties.
+// It's possible that the minting process could be separated from the royalty payment process, but this blueprint combines them for simplicity.
+
 #[derive(ScryptoSbor, NonFungibleData)]
 struct Rascal {
     name: String,
     description: String,
     key_image_url: Url,
     attributes: Vec<HashMap<String, String>>,
-    royalty_component: ComponentAddress,
+}
+
+#[derive(ScryptoSbor)]
+pub enum RoyaltyEnforcementLevel {
+    None,
+    Partial,
+    Full,
 }
 
 #[blueprint]
@@ -14,17 +25,39 @@ mod royal_rascals {
 
     struct RoyalRascals {
         rascal_manager: ResourceManager,
-        rascal_component: ComponentAddress,
-        rascal_admin_manager: ResourceManager,
-        rascal_admin: ResourceAddress,
+        rascal_creator_admin_manager: ResourceManager,
+        rascal_creator_admin: ResourceAddress,
+
+        /// The price to mint a Royal Rascal NFT
         mint_price: Decimal,
+
+        /// The selected currrency for minting Royal Rascals, e.g. XRD
         mint_currency: ResourceAddress,
+
+        /// The maximum number of Royal Rascals that can be minted
         collection_cap: u64,
+
+        /// The current mint ID for integer NFTs minted
         mint_id: u64,
+
+        /// The vault for storing mint payments
         mint_payments_vault: Vault,
+
+        /// The royalty percentage to be paid to the creator of the Royal Rascals
         royalty_percent: Decimal,
-        royally_listed: KeyValueStore<NonFungibleLocalId, ResourceAddress>,
+
+        /// Royalty enforcement levels can be set at none, partial, or full
+        /// None: No royalties are enforced
+        /// Partial (reccommended): Royalties are enforced but can be bypassed if a middleman component is used for trading,
+        /// however it does allow the NFTs to be used with other components that are not accounts.
+        /// Full: Royalties are enforced and cannot be bypassed, this means that the NFTs can only be used with accounts.
+        royalty_enforcement_level: RoyaltyEnforcementLevel,
+
+        /// All the royalty payments that have been made for different currencies
         royalty_vaults: KeyValueStore<ResourceAddress, Vault>,
+
+        /// The address of the royalty component (which in this case, is this same component)
+        royalty_component: ComponentAddress,
     }
 
     impl RoyalRascals {
@@ -35,7 +68,7 @@ mod royal_rascals {
             royalty_percent: Decimal,
             depositer_admin: ResourceAddress,
         ) -> (Global<RoyalRascals>, FungibleBucket) {
-            let (rascal_address_reservation, rascal_component_address) =
+            let (rascal_address_reservation, royalty_component_address) =
                 Runtime::allocate_component_address(RoyalRascals::blueprint_id());
 
             assert!(
@@ -43,90 +76,94 @@ mod royal_rascals {
                 "Royalty percent must be less than 100%"
             );
 
-            let rascal_admin = ResourceBuilder::new_fungible(OwnerRole::None)
+            let rascal_creator_admin = ResourceBuilder::new_fungible(OwnerRole::None)
                 .divisibility(0)
                 .mint_initial_supply(1);
 
-            let rascal_rule = rule!(require(rascal_admin.resource_address()));
+            let creator_admin_rule = rule!(require(rascal_creator_admin.resource_address()));
 
-            let global_caller_badge_rule = rule!(require(global_caller(rascal_component_address)));
+            let global_caller_badge_rule = rule!(require(global_caller(royalty_component_address)));
 
+            // This is the key rule that allows trader accounts to trade royalty NFTs.
+            // In this example, we're allowing the component and trader accounts to deposit Rascal NFTs.
             let depositer_admin_rule = rule!(
                 require_amount(1, depositer_admin)
-                    || require(global_caller(rascal_component_address))
+                    || require(global_caller(royalty_component_address))
             );
 
             let rascal_manager =
                 ResourceBuilder::new_integer_non_fungible::<Rascal>(OwnerRole::None)
                     .mint_roles(mint_roles! {
                         minter => global_caller_badge_rule.clone();
-                        minter_updater => rascal_rule.clone();
+                        minter_updater => creator_admin_rule.clone();
                     })
                     .burn_roles(burn_roles! {
-                        burner => rascal_rule.clone();
-                        burner_updater => rascal_rule.clone();
+                        burner => creator_admin_rule.clone();
+                        burner_updater => creator_admin_rule.clone();
                     })
+                    // This rule creates the restriction that stops the NFTs from being traded without a royalty payment.
+                    // Only the royalty component can bypass this rule and trader accounts can bypass this rule.
                     .deposit_roles(deposit_roles! {
                         depositor => depositer_admin_rule;
                         depositor_updater => global_caller_badge_rule.clone();
                     })
-                    .recall_roles(recall_roles! {
-                        recaller => global_caller_badge_rule.clone();
-                        recaller_updater => rule!(deny_all);
-                    })
                     .non_fungible_data_update_roles(non_fungible_data_update_roles! {
-                        non_fungible_data_updater => rascal_rule.clone();
-                        non_fungible_data_updater_updater => rascal_rule.clone();
+                        non_fungible_data_updater => creator_admin_rule.clone();
+                        non_fungible_data_updater_updater => creator_admin_rule.clone();
                     })
                     .metadata(metadata! {
                         roles {
-                            metadata_locker => rule!(allow_all);
-                            metadata_locker_updater => rule!(allow_all);
-                            metadata_setter => OWNER;
-                            metadata_setter_updater => rule!(deny_all);
+                            metadata_locker => creator_admin_rule.clone();
+                            metadata_locker_updater => creator_admin_rule.clone();
+                            metadata_setter => global_caller_badge_rule.clone();
+                            metadata_setter_updater => creator_admin_rule;
                         },
                         init {
+                            // We include the royalty component address in the NFTs top-level metadata.
+                            // This is important as it means we don't need to programmatically find royalty components on the dApp.
+                            // Instead we can dynamically find the component on the NFTs Resource metadata.
+                            // It's important we don't place this component address on the individual NFTs because
+                            // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
                             "name" => "Royal Rascals", updatable;
-                            "royalty_component" => rascal_component_address, updatable;
+                            "royalty_component" => royalty_component_address, updatable;
                         }
                     })
                     .create_with_no_initial_supply();
 
             let component_adresss = Self {
                 rascal_manager,
-                rascal_component: rascal_component_address,
-                rascal_admin_manager: rascal_admin.resource_manager(),
-                rascal_admin: rascal_admin.resource_address(),
+                royalty_component: royalty_component_address,
+                rascal_creator_admin_manager: rascal_creator_admin.resource_manager(),
+                rascal_creator_admin: rascal_creator_admin.resource_address(),
                 mint_price,
                 mint_currency: mint_currency.clone(),
                 collection_cap,
                 mint_id: 0,
                 mint_payments_vault: Vault::new(mint_currency),
                 royalty_percent,
-                royally_listed: KeyValueStore::new(),
                 royalty_vaults: KeyValueStore::new(),
+                royalty_enforcement_level: RoyaltyEnforcementLevel::Full,
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
             .with_address(rascal_address_reservation)
             .globalize();
 
-            (component_adresss, rascal_admin)
+            (component_adresss, rascal_creator_admin)
         }
 
         pub fn resource_address(&self) -> ResourceAddress {
             self.rascal_manager.address()
         }
 
+        /// This function allows users to buy a preview of an NFT before it is minted. This acts as a mechanism for random minting.
+        /// Users pay for the mint cost and only a certain limit set by the cap can be minted.
+        /// After the desired number of NFTs have been minted, then the creator can update the metadata on all or some of the NFTs.
         pub fn mint_preview_nft(
             &mut self,
             mut payment: Bucket,
             mut account: Global<Account>,
         ) -> Vec<Bucket> {
-            {
-                let owner_role = account.get_owner_role();
-                Runtime::assert_access_rule(owner_role.rule);
-            }
             assert!(
                 payment.amount() >= self.mint_price,
                 "[Mint Preview NFT] : Insufficient funds to mint NFT"
@@ -141,16 +178,6 @@ mod royal_rascals {
                 "[Mint Preview NFT] : Collection cap reached"
             );
 
-            {
-                // Getting the owner role of the account.
-                let owner_role = account.get_owner_role();
-
-                // Assert against it.
-                Runtime::assert_access_rule(owner_role.rule);
-
-                // Assertion passed - the caller is the owner of the account.
-            }
-
             self.mint_payments_vault.put(payment.take(self.mint_price));
 
             let rascal = Rascal {
@@ -158,17 +185,17 @@ mod royal_rascals {
                 description: "A mischievous little rascal".to_string(),
                 key_image_url: Url::of("https://rascal.com/placeholder.png"),
                 attributes: vec![],
-                royalty_component: self.rascal_component,
             };
 
             let minted_edition = self
                 .rascal_manager
                 .mint_non_fungible(&NonFungibleLocalId::Integer(self.mint_id.into()), rascal);
 
-            account.try_deposit_or_abort(minted_edition, None);
-
             self.mint_id += 1;
 
+            account.try_deposit_or_abort(minted_edition, None);
+
+            // we return any change from the transaction and the preview NFT
             vec![payment]
         }
 
@@ -180,9 +207,9 @@ mod royal_rascals {
             description: String,
             key_image_url: String,
             attributes: Vec<HashMap<String, String>>,
-            rascal_admin: Proof,
+            rascal_creator_admin: Proof,
         ) {
-            let checked_admin = rascal_admin.check(self.rascal_admin);
+            let checked_admin = rascal_creator_admin.check(self.rascal_creator_admin);
 
             checked_admin.authorize(|| {
                 self.rascal_manager
@@ -199,35 +226,13 @@ mod royal_rascals {
             })
         }
 
-        pub fn register_listing(&mut self, nft: Bucket, currency: ResourceAddress) -> Bucket {
-            // check the correct resource has been passed
-            assert!(
-                nft.resource_address() == self.rascal_manager.address(),
-                "[royal_list] Incorrect resource passed"
-            );
-
-            assert!(
-                nft.amount() == dec!(1),
-                "[royal_list] Only one NFT can be listed at a time"
-            );
-
-            // get the local id of the NFT
-            let id = nft.as_non_fungible().non_fungible_local_id();
-
-            // Store the royalty required and currency in the royally_listed store
-            self.royally_listed.insert(id.clone(), currency);
-
-            // // allow the NFT to be withdrawn and recall it for the user and store it in the warehouse
-            // self.rascal_manager.set_depositable(rule!(allow_all));
-
-            // // Send it to the warehoure
-            // warehouse_address.call_raw::<()>("deposit", scrypto_args!(nft));
-
-            // // relock the NFT's movement
-            // self.rascal_manager.set_depositable(rule!(deny_all));
-            nft
-        }
-
+        // This function can be called by trader accounts when an NFT from this collection is purchased.
+        // It takes the payment and an option for an account to send the NFT to.
+        // It uses the royalty percentage set by the creator to determine how much of the payment to take.
+        // We use a keyvaluestore of vaults so that we can store multiple currencies.
+        // We take the NFT as an argument so that we can determine at this point whether we want to enforce full royalties
+        // where only an account component can own the NFT - in which case we just sent the NFT directly to the input account.
+        // Otherwise, we send the NFT back to the trading account component, where a it could be sent on to another component.
         pub fn pay_royalty(
             &mut self,
             nft: Bucket,
@@ -242,20 +247,7 @@ mod royal_rascals {
                 "[pay_royalty] Incorrect resource passed"
             );
 
-            // get the local id of the NFT
-            let nft_id = nft.as_non_fungible().non_fungible_local_id();
-
-            let currency = self
-                .royally_listed
-                .get(&nft_id)
-                .expect("[pay_royalty] NFT not found in royally_listed store")
-                .clone();
-
-            // check the correct resource has been passed
-            assert!(
-                payment.resource_address() == currency,
-                "[pay_royalty] Incorrect currency passed"
-            );
+            let currency = payment.resource_address();
 
             // send the royalty to the royalty vault
 
@@ -278,17 +270,8 @@ mod royal_rascals {
                 self.royalty_vaults.get_mut(&currency).unwrap().put(royalty);
             }
 
-            // remove the NFT from the royally_listed store
-            self.royally_listed.remove(&nft_id);
-
-            // we can now allow movement of the NFT
-            self.rascal_manager.set_depositable(rule!(allow_all));
-
             // send nft to account
             account.try_deposit_or_abort(nft, None);
-
-            // relock the NFT's movement
-            self.rascal_manager.set_depositable(rule!(deny_all));
 
             // payment minus royalty returned
             payment

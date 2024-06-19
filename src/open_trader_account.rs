@@ -38,6 +38,7 @@ mod opentrader {
         // account_locker: Global<AccountLocker>,
         my_account: Global<Account>,
         virtual_badge: Vault,
+        virtual_badge_local: NonFungibleLocalId,
         warehouse_address: ComponentAddress,
         nft_vaults: KeyValueStore<NonFungibleGlobalId, Vault>,
         sales_revenue: KeyValueStore<ResourceAddress, Vault>,
@@ -56,6 +57,10 @@ mod opentrader {
             let global_caller_badge_rule = rule!(require(global_caller(trader_component_address)));
 
             let (auth_key_resource, auth_key_local) = auth_key.into_parts();
+
+            // The ambition is use AccountLockers here to take sales revenue in the future so that
+            // users don't have to claim their revenue manually.
+
             // let account_locker = Blueprint::<AccountLocker>::instantiate(
             //     OwnerRole::Updatable(global_caller_badge_rule.clone()),
             //     global_caller_badge_rule.clone(),
@@ -65,6 +70,8 @@ mod opentrader {
             //     None,
             // );
 
+            let virtual_badge_local = virtual_badge.as_non_fungible().non_fungible_local_id();
+
             Self {
                 auth_key_local,
                 auth_key_resource,
@@ -73,6 +80,7 @@ mod opentrader {
                 // account_locker,
                 my_account,
                 virtual_badge: Vault::with_bucket(virtual_badge),
+                virtual_badge_local,
                 warehouse_address: trader_component_address,
                 nft_vaults: KeyValueStore::new(),
                 sales_revenue: KeyValueStore::new(),
@@ -124,33 +132,11 @@ mod opentrader {
                 nfgid: nfgid.clone(),
             };
 
-            self.royal_listings.insert(nfgid, new_listing);
-
-            let royalty_component_global_address: GlobalAddress =
-                ResourceManager::from_address(nft_address)
-                    .get_metadata("royalty_component")
-                    .unwrap()
-                    .unwrap();
-
-            let royalty_component =
-                ComponentAddress::new_or_panic(royalty_component_global_address.into());
-
-            let call_address: Global<AnyComponent> = Global(ObjectStub::new(
-                ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
-            ));
-
-            let returned_bucket: Bucket = call_address.call_raw::<Bucket>(
-                "register_listing",
-                scrypto_args!(nft_to_list, currency.clone()),
-            );
-
-            let nft_address = returned_bucket.resource_address();
-            let id = returned_bucket.as_non_fungible().non_fungible_local_id();
-            let nfgid = NonFungibleGlobalId::new(nft_address, id.clone());
+            self.royal_listings.insert(nfgid.clone(), new_listing);
 
             self.royal_admin.as_fungible().authorize_with_amount(1, || {
                 self.nft_vaults
-                    .insert(nfgid, Vault::with_bucket(returned_bucket));
+                    .insert(nfgid.clone(), Vault::with_bucket(nft_to_list));
             })
         }
 

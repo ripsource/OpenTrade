@@ -1,7 +1,7 @@
 use scrypto_test::prelude::*;
 
 use trader::open_trade_event::*;
-use trader::open_trade_protocol::*;
+use trader::open_trade_factory::*;
 use trader::open_trader_account::*;
 use trader::royal_mint_example::*;
 
@@ -46,9 +46,15 @@ fn test_hello() {
     println!("fetched virt badge address");
     receipt.expect_commit_success();
 
+    let virt_badge: ResourceAddress = receipt.expect_commit(true).output(1);
+
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
-        .call_method(component, "fetch_depositer_admin", manifest_args!())
+        .call_method(
+            component,
+            "fetch_royal_nft_depositer_badge",
+            manifest_args!(),
+        )
         .build();
 
     let receipt = ledger.execute_manifest(
@@ -154,7 +160,7 @@ fn test_hello() {
             package_address,
             "RoyalRascals",
             "start_minting_rascals",
-            manifest_args!(dec!(100), XRD, 1000u64, dec!(0.1), depositer_badge),
+            manifest_args!(dec!(100), XRD, 1000u64, dec!(0.1), depositer_badge,),
         )
         .call_method(
             account,
