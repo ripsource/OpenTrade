@@ -2,6 +2,14 @@
 
 This set of blueprints sets out the infrastructure for decentralised NFT trading on Radix, where 1 NFT can be listed on multiple marketplaces at the same time. The intention is to allow for users to have control over their assets, while ensuring marketplace aggregators can earn fees for their services and creators can enforce royalties in a flexible way. 
 
+You'll find basic blueprints for:
+- A shared-escrow account for individual traders to use for listing their NFTs as well as for purchasers to buy from.
+- A factory component that creates trading accounts and provides them with specific auth badges
+- A basic minting script for a Royalty-Enforced NFT collection which for simplicity also serves as royalty collection and configuration component for a creator
+- An example of a generic marketplace: As all trading logic is embedded in trading accounts, very little is required here
+- An example of generic dApp: solely serving the purpose of demonstrating how a royalty-enforced NFT could be transferred to a permitted dApp
+- An event emitter component: This centralised component links in to all trader accounts and emits events for listings/purchases/cancellations/updates.
+
 The design hopes to boast the following features:
 
 ## For traders:
@@ -22,10 +30,11 @@ The design hopes to boast the following features:
 - Use a standard template to mint collections that are fully integrated with the trading system
 - BYOB - Bring your own blueprint, integration to your collection requires only a few lines of Scrypto
 - Configure royalty enforcement level at any time:
-    - allow only users to hold your NFTs (High royalty enforcement)
-    - allow users and dApps to hold your NFTs (Medium royalty enforcement)
+    - allow only users to hold your NFTs + select specific dApps that can hold/interact with your NFTs (High royalty enforcement)
+    - allow users and any dApps to hold your NFTs (Medium royalty enforcement)
     - remove all royalty restrictions (no royalty enforcement)
     - Switch between royalty restriction levels at any time
+    - Allows users to transfer royalty-enforced NFTs between accounts they can demonstrate they own for free
     - Charge % fees or flat fees
     - Set royalty configuration parameter such as maximum %fee
     - customise fee % at any time 
