@@ -13,11 +13,32 @@ struct Rascal {
     attributes: Vec<HashMap<String, String>>,
 }
 
-#[derive(ScryptoSbor)]
+#[derive(ScryptoSbor)] // To Do
 pub enum RoyaltyEnforcementLevel {
+    /// standard Radix NFT with no limitations on transferring.
     None,
+    /// Royalties are enforced for trading accounts, but the NFTs can be used with any other components that are not accounts. (Recommended if you want higher interoperability)
     Partial,
+    /// Royalties are enforced for trading accounts, but the NFTs can only be used with specifically permissioned dApps. (Recommended if royalties are part of revenue model)
     Full,
+}
+
+#[derive(ScryptoSbor)] // To Do
+pub enum RoyaltyFeeType {
+    // No fee, standard Radix NFT settings
+    None,
+    // A flat fee is charged for each trade in selected currencies
+    Flat,
+    // A percentage fee is charged for each trade in any currencies (Recommended for most use cases)
+    Percentage,
+}
+
+#[derive(ScryptoSbor)] // TO DO
+pub enum PercentageFeeCurrencies {
+    // Allow trading in any currency, such that the creator receives royalties in any currency. (Reccoemnded for most use cases)
+    Any,
+    // Allow trading in only selected currencies, such that the creator only receives royalties in those currencies.
+    Selected,
 }
 
 #[blueprint]
@@ -27,6 +48,8 @@ mod royal_rascals {
         rascal_manager: ResourceManager,
         rascal_creator_admin_manager: ResourceManager,
         rascal_creator_admin: ResourceAddress,
+
+        depositer_admin: ResourceAddress,
 
         /// The price to mint a Royal Rascal NFT
         mint_price: Decimal,
@@ -46,6 +69,15 @@ mod royal_rascals {
         /// The royalty percentage to be paid to the creator of the Royal Rascals
         royalty_percent: Decimal,
 
+        /// Royalty as a flat fee :: To Do
+        royalty_flat: Decimal,
+
+        /// Royalty maximum level :: To Do
+        maximum_royalty_percent: Decimal,
+
+        /// maximum royalty flat fee :: To Do
+        maximum_royalty_flat: Decimal,
+
         /// Royalty enforcement levels can be set at none, partial, or full
         /// None: No royalties are enforced
         /// Partial (reccommended): Royalties are enforced but can be bypassed if a middleman component is used for trading,
@@ -58,6 +90,9 @@ mod royal_rascals {
 
         /// The address of the royalty component (which in this case, is this same component)
         royalty_component: ComponentAddress,
+
+        /// Permissioned dApps - Dapps that you want to allow your NFTs to interact with/be deposited to.
+        permissioned_dapps: KeyValueStore<ComponentAddress, ()>,
     }
 
     impl RoyalRascals {
@@ -135,14 +170,19 @@ mod royal_rascals {
                 royalty_component: royalty_component_address,
                 rascal_creator_admin_manager: rascal_creator_admin.resource_manager(),
                 rascal_creator_admin: rascal_creator_admin.resource_address(),
+                depositer_admin,
                 mint_price,
                 mint_currency: mint_currency.clone(),
                 collection_cap,
                 mint_id: 0,
                 mint_payments_vault: Vault::new(mint_currency),
                 royalty_percent,
+                royalty_flat: Decimal::from(0),
+                maximum_royalty_percent: Decimal::from(1),
+                maximum_royalty_flat: Decimal::from(0),
                 royalty_vaults: KeyValueStore::new(),
                 royalty_enforcement_level: RoyaltyEnforcementLevel::Full,
+                permissioned_dapps: KeyValueStore::new(),
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
@@ -270,11 +310,38 @@ mod royal_rascals {
                 self.royalty_vaults.get_mut(&currency).unwrap().put(royalty);
             }
 
-            // send nft to account
-            // account.try_deposit_or_abort(nft, None);
-
-            // payment minus royalty returned
+            // payment minus royalty returned to the trading account that called this method
             payment
+        }
+
+        /// possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement
+        /// Allow any dapp if royalties set to partial.
+        pub fn transfer_royalty_nft_to_dapp(
+            &mut self,
+            nft: Bucket,
+            dapp: ComponentAddress,
+            custom_method: String,
+        ) {
+            assert!(
+                self.permissioned_dapps.get(&dapp).is_some(),
+                "This dApp has not been permissioned by the collection creator"
+            );
+
+            let call_address: Global<AnyComponent> = Global(ObjectStub::new(
+                ObjectStubHandle::Global(GlobalAddress::from(dapp)),
+            ));
+
+            let manfiest_method: &str = &custom_method;
+
+            self.rascal_manager.set_depositable(rule!(allow_all));
+
+            // send nft to dapp
+            call_address.call_raw::<()>(manfiest_method, scrypto_args!(nft));
+
+            self.rascal_manager.set_depositable(rule!(
+                require_amount(1, self.depositer_admin)
+                    || require(global_caller(self.royalty_component))
+            ));
         }
     }
 }

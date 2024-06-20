@@ -396,6 +396,13 @@ mod opentrader {
             });
         }
 
+        // deposit an nft from a dapp- this method would be used by a dapp to deposit an NFT back to a users account.
+        pub fn deposit_from_dapp(&mut self, nft: Bucket) {
+            self.royal_admin.as_fungible().authorize_with_amount(1, || {
+                self.my_account.try_deposit_or_abort(nft.into(), None);
+            });
+        }
+
         // Non-Royalty Enforced Methods
 
         pub fn market_list_nft(
