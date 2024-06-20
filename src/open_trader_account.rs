@@ -396,7 +396,6 @@ mod opentrader {
             });
         }
 
-        // deposit an nft from a dapp- this method would be used by a dapp to deposit an NFT back to a users account.
         pub fn deposit_from_dapp(&mut self, nft: Bucket) {
             self.royal_admin.as_fungible().authorize_with_amount(1, || {
                 self.my_account.try_deposit_or_abort(nft.into(), None);
@@ -404,6 +403,10 @@ mod opentrader {
         }
 
         // Non-Royalty Enforced Methods
+        // I've not implemented these methods yet
+        // lots to change up so can be ignored.
+        // Overall - handling non-royalty NFTs is much simpler as there are no royalties to pay - so has not been
+        // a priority to implement yet.
 
         pub fn market_list_nft(
             &mut self,

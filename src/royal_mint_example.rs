@@ -340,9 +340,8 @@ mod royal_rascals {
             //     .update_metadata("royalty_level", new_royalty_level);
         }
 
-        /// possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement
+        /// Possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement
         /// Allow any dapp if royalties set to partial.
-        /// To do - Remove this method here and put it on the trader account component. Unneccessary to confuse logic here.
         pub fn transfer_royalty_nft_to_dapp(
             &mut self,
             nft: Bucket,
