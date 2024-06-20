@@ -14,16 +14,6 @@ struct Rascal {
 }
 
 #[derive(ScryptoSbor)] // To Do
-pub enum RoyaltyEnforcementLevel {
-    /// standard Radix NFT with no limitations on transferring.
-    None,
-    /// Royalties are enforced for trading accounts, but the NFTs can be used with any other components that are not accounts. (Recommended if you want higher interoperability)
-    Partial,
-    /// Royalties are enforced for trading accounts, but the NFTs can only be used with specifically permissioned dApps. (Recommended if royalties are part of revenue model)
-    Full,
-}
-
-#[derive(ScryptoSbor)] // To Do
 pub enum RoyaltyFeeType {
     // No fee, standard Radix NFT settings
     None,
@@ -35,7 +25,7 @@ pub enum RoyaltyFeeType {
 
 #[derive(ScryptoSbor)] // TO DO
 pub enum PercentageFeeCurrencies {
-    // Allow trading in any currency, such that the creator receives royalties in any currency. (Reccoemnded for most use cases)
+    // Allow trading in any currency, such that the creator receives royalties in any currency. (Reccomended for most use cases)
     Any,
     // Allow trading in only selected currencies, such that the creator only receives royalties in those currencies.
     Selected,
@@ -43,6 +33,8 @@ pub enum PercentageFeeCurrencies {
 
 #[blueprint]
 mod royal_rascals {
+
+    // To Do System Access Rules
 
     struct RoyalRascals {
         rascal_manager: ResourceManager,
@@ -78,12 +70,8 @@ mod royal_rascals {
         /// maximum royalty flat fee :: To Do
         maximum_royalty_flat: Decimal,
 
-        /// Royalty enforcement levels can be set at none, partial, or full
-        /// None: No royalties are enforced
-        /// Partial (reccommended): Royalties are enforced but can be bypassed if a middleman component is used for trading,
-        /// however it does allow the NFTs to be used with other components that are not accounts.
-        /// Full: Royalties are enforced and cannot be bypassed, this means that the NFTs can only be used with accounts.
-        royalty_enforcement_level: RoyaltyEnforcementLevel,
+        /// lock royalty configuration
+        royalty_configuration_locked: bool,
 
         /// All the royalty payments that have been made for different currencies
         royalty_vaults: KeyValueStore<ResourceAddress, Vault>,
@@ -101,6 +89,23 @@ mod royal_rascals {
             mint_currency: ResourceAddress,
             collection_cap: u64,
             royalty_percent: Decimal,
+            royalty_flat: Decimal,
+            minimimum_royalty: Decimal,
+            maximum_royalty_percent: Decimal,
+            maximum_royalty_flat: Decimal,
+
+            // Royalties are enforced for trading accounts, but the NFTs can only be used with specifically permissioned dApps.
+            // (Recommended if royalties are part of revenue model)
+            full_royalty_enforcement: bool,
+            // Royalties are enforced for trading accounts, but the NFTs can be used with any other components that are not accounts.
+            // (Recommended if you want higher interoperability)
+            partial_royalty_enforcement: bool,
+            // if both are false - this is configured as a standard Radix NFT, however royalties can be switched on at a later date.
+            //
+            // Option to lock the royalty configuration so that a creator can never change between full, partial, none royalty enforcement
+            // or adjust the royalty fees.
+            royalty_configuration_locked: bool,
+            // Required to enable trader accounts to interact with royalty NFTs
             depositer_admin: ResourceAddress,
         ) -> (Global<RoyalRascals>, FungibleBucket) {
             let (rascal_address_reservation, royalty_component_address) =
@@ -110,6 +115,40 @@ mod royal_rascals {
                 royalty_percent <= Decimal::from(1),
                 "Royalty percent must be less than 100%"
             );
+
+            assert!(
+                royalty_percent >= minimimum_royalty,
+                "Royalty percent must be greater than minimum royalty"
+            );
+
+            assert!(
+                royalty_percent <= maximum_royalty_percent,
+                "Royalty percent must be less than maximum royalty"
+            );
+
+            assert!(
+                royalty_flat <= maximum_royalty_flat,
+                "Royalty flat fee must be less than maximum royalty flat fee"
+            );
+
+            assert!(
+                royalty_flat >= minimimum_royalty,
+                "Royalty flat fee must be greater than minimum royalty"
+            );
+
+            let royalty_level: String;
+
+            if full_royalty_enforcement && partial_royalty_enforcement {
+                panic!("Cannot have both full and partial royalty enforcement");
+            }
+
+            if full_royalty_enforcement {
+                royalty_level = "Full".to_string();
+            } else if partial_royalty_enforcement {
+                royalty_level = "Partial".to_string();
+            } else {
+                royalty_level = "None".to_string();
+            }
 
             let rascal_creator_admin = ResourceBuilder::new_fungible(OwnerRole::None)
                 .divisibility(0)
@@ -159,8 +198,10 @@ mod royal_rascals {
                             // Instead we can dynamically find the component on the NFTs Resource metadata.
                             // It's important we don't place this component address on the individual NFTs because
                             // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
-                            "name" => "Royal Rascals", updatable;
+                            "name" => "Royal Rascals".to_owned(), updatable;
                             "royalty_component" => royalty_component_address, updatable;
+                            "royalty_level" => royalty_level.to_owned(), updatable;
+
                         }
                     })
                     .create_with_no_initial_supply();
@@ -180,8 +221,8 @@ mod royal_rascals {
                 royalty_flat: Decimal::from(0),
                 maximum_royalty_percent: Decimal::from(1),
                 maximum_royalty_flat: Decimal::from(0),
+                royalty_configuration_locked,
                 royalty_vaults: KeyValueStore::new(),
-                royalty_enforcement_level: RoyaltyEnforcementLevel::Full,
                 permissioned_dapps: KeyValueStore::new(),
             }
             .instantiate()
@@ -314,8 +355,81 @@ mod royal_rascals {
             payment
         }
 
+        pub fn lock_royalty_configuration(&mut self) {
+            self.royalty_configuration_locked = true;
+        }
+
+        pub fn change_royalty_percentage_fee(&mut self, new_royalty_percent: Decimal) {
+            assert!(
+                !self.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+
+            assert!(
+                new_royalty_percent <= self.maximum_royalty_percent,
+                "New royalty percentage is greater than maximum allowed"
+            );
+
+            self.royalty_percent = new_royalty_percent;
+        }
+
+        pub fn change_royalty_flat_fee(&mut self, new_royalty_flat: Decimal) {
+            assert!(
+                !self.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+
+            assert!(
+                new_royalty_flat <= self.maximum_royalty_flat,
+                "New royalty flat fee is greater than maximum allowed"
+            );
+
+            self.royalty_flat = new_royalty_flat;
+        }
+
+        pub fn switch_royalty_to_flat_fee(&mut self, new_royalty_flat: Decimal) {
+            assert!(
+                !self.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+
+            assert!(
+                new_royalty_flat <= self.maximum_royalty_flat,
+                "New royalty flat fee is greater than maximum allowed"
+            );
+
+            self.royalty_percent = Decimal::from(0);
+            self.royalty_flat = new_royalty_flat;
+        }
+
+        pub fn switch_royalty_to_percentage_fee(&mut self, new_royalty_percent: Decimal) {
+            assert!(
+                !self.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+
+            assert!(
+                new_royalty_percent <= self.maximum_royalty_percent,
+                "New royalty percentage is greater than maximum allowed"
+            );
+
+            self.royalty_percent = new_royalty_percent;
+            self.royalty_flat = Decimal::from(0);
+        }
+
+        pub fn update_royalty_level(&mut self, new_royalty_level: String) {
+            assert!(
+                !self.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+
+            // self.rascal_manager
+            //     .update_metadata("royalty_level", new_royalty_level);
+        }
+
         /// possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement
         /// Allow any dapp if royalties set to partial.
+        /// To do - Remove this method here and put it on the trader account component. Unneccessary to confuse logic here.
         pub fn transfer_royalty_nft_to_dapp(
             &mut self,
             nft: Bucket,
