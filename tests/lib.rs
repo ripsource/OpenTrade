@@ -167,7 +167,17 @@ fn test_hello() {
             package_address,
             "RoyalRascals",
             "start_minting_rascals",
-            manifest_args!(dec!(100), XRD, 1000u64, dec!(0.1), depositer_badge,),
+            manifest_args!(
+                dec!(100),
+                XRD,
+                1000u64,
+                dec!(0.05),
+                dec!(0.1),
+                false,
+                true,
+                false,
+                depositer_badge,
+            ),
         )
         .call_method(
             account,

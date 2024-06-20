@@ -13,24 +13,6 @@ struct Rascal {
     attributes: Vec<HashMap<String, String>>,
 }
 
-#[derive(ScryptoSbor)] // To Do
-pub enum RoyaltyFeeType {
-    // No fee, standard Radix NFT settings
-    None,
-    // A flat fee is charged for each trade in selected currencies
-    Flat,
-    // A percentage fee is charged for each trade in any currencies (Recommended for most use cases)
-    Percentage,
-}
-
-#[derive(ScryptoSbor)] // TO DO
-pub enum PercentageFeeCurrencies {
-    // Allow trading in any currency, such that the creator receives royalties in any currency. (Reccomended for most use cases)
-    Any,
-    // Allow trading in only selected currencies, such that the creator only receives royalties in those currencies.
-    Selected,
-}
-
 #[blueprint]
 mod royal_rascals {
 
@@ -61,16 +43,11 @@ mod royal_rascals {
         /// The royalty percentage to be paid to the creator of the Royal Rascals
         royalty_percent: Decimal,
 
-        /// Royalty as a flat fee :: To Do
-        royalty_flat: Decimal,
-
         /// Royalty maximum level :: To Do
         maximum_royalty_percent: Decimal,
 
-        /// maximum royalty flat fee :: To Do
-        maximum_royalty_flat: Decimal,
-
-        /// lock royalty configuration
+        /// lock royalty configuration: Option can give traders confidence that the royalty percentage/settings will not change.
+        /// There's no method to undo this once set to true.
         royalty_configuration_locked: bool,
 
         /// All the royalty payments that have been made for different currencies
@@ -79,8 +56,15 @@ mod royal_rascals {
         /// The address of the royalty component (which in this case, is this same component)
         royalty_component: ComponentAddress,
 
-        /// Permissioned dApps - Dapps that you want to allow your NFTs to interact with/be deposited to.
+        /// [Only applicable if royalty-enforcement set to FULL] Permissioned dApps - Dapps that you want to allow your NFTs to interact with/be deposited to.
         permissioned_dapps: KeyValueStore<ComponentAddress, ()>,
+
+        /// Offers an option for a creator to only allow trading of their assets in certain currencies.
+        restricted_currency_setting: bool,
+
+        /// [Only applicable if restricted_currency_setting is turned on] Currencies that the creator can receive royalties in
+        /// (i.e. the currencies the asset can be traded in)
+        restricted_currencies: KeyValueStore<ResourceAddress, ()>,
     }
 
     impl RoyalRascals {
@@ -89,21 +73,9 @@ mod royal_rascals {
             mint_currency: ResourceAddress,
             collection_cap: u64,
             royalty_percent: Decimal,
-            royalty_flat: Decimal,
-            minimimum_royalty: Decimal,
             maximum_royalty_percent: Decimal,
-            maximum_royalty_flat: Decimal,
-
-            // Royalties are enforced for trading accounts, but the NFTs can only be used with specifically permissioned dApps.
-            // (Recommended if royalties are part of revenue model)
             full_royalty_enforcement: bool,
-            // Royalties are enforced for trading accounts, but the NFTs can be used with any other components that are not accounts.
-            // (Recommended if you want higher interoperability)
             partial_royalty_enforcement: bool,
-            // if both are false - this is configured as a standard Radix NFT, however royalties can be switched on at a later date.
-            //
-            // Option to lock the royalty configuration so that a creator can never change between full, partial, none royalty enforcement
-            // or adjust the royalty fees.
             royalty_configuration_locked: bool,
             // Required to enable trader accounts to interact with royalty NFTs
             depositer_admin: ResourceAddress,
@@ -117,23 +89,8 @@ mod royal_rascals {
             );
 
             assert!(
-                royalty_percent >= minimimum_royalty,
-                "Royalty percent must be greater than minimum royalty"
-            );
-
-            assert!(
                 royalty_percent <= maximum_royalty_percent,
                 "Royalty percent must be less than maximum royalty"
-            );
-
-            assert!(
-                royalty_flat <= maximum_royalty_flat,
-                "Royalty flat fee must be less than maximum royalty flat fee"
-            );
-
-            assert!(
-                royalty_flat >= minimimum_royalty,
-                "Royalty flat fee must be greater than minimum royalty"
             );
 
             let royalty_level: String;
@@ -218,12 +175,12 @@ mod royal_rascals {
                 mint_id: 0,
                 mint_payments_vault: Vault::new(mint_currency),
                 royalty_percent,
-                royalty_flat: Decimal::from(0),
-                maximum_royalty_percent: Decimal::from(1),
-                maximum_royalty_flat: Decimal::from(0),
+                maximum_royalty_percent,
                 royalty_configuration_locked,
                 royalty_vaults: KeyValueStore::new(),
                 permissioned_dapps: KeyValueStore::new(),
+                restricted_currencies: KeyValueStore::new(),
+                restricted_currency_setting: false,
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
@@ -371,50 +328,6 @@ mod royal_rascals {
             );
 
             self.royalty_percent = new_royalty_percent;
-        }
-
-        pub fn change_royalty_flat_fee(&mut self, new_royalty_flat: Decimal) {
-            assert!(
-                !self.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
-
-            assert!(
-                new_royalty_flat <= self.maximum_royalty_flat,
-                "New royalty flat fee is greater than maximum allowed"
-            );
-
-            self.royalty_flat = new_royalty_flat;
-        }
-
-        pub fn switch_royalty_to_flat_fee(&mut self, new_royalty_flat: Decimal) {
-            assert!(
-                !self.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
-
-            assert!(
-                new_royalty_flat <= self.maximum_royalty_flat,
-                "New royalty flat fee is greater than maximum allowed"
-            );
-
-            self.royalty_percent = Decimal::from(0);
-            self.royalty_flat = new_royalty_flat;
-        }
-
-        pub fn switch_royalty_to_percentage_fee(&mut self, new_royalty_percent: Decimal) {
-            assert!(
-                !self.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
-
-            assert!(
-                new_royalty_percent <= self.maximum_royalty_percent,
-                "New royalty percentage is greater than maximum allowed"
-            );
-
-            self.royalty_percent = new_royalty_percent;
-            self.royalty_flat = Decimal::from(0);
         }
 
         pub fn update_royalty_level(&mut self, new_royalty_level: String) {
