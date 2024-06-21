@@ -369,7 +369,7 @@ mod opentrader {
 
         /// Transfers an NFT to a component. This method is used to transfer an NFT to a component that is not an account.
         /// This can only work if the Royalty NFT has selected the royalty enforcement level to be: Partial or if Full, the creator
-        /// must have permissioned the dapp in the royalty component.
+        /// must have permissioned the dapp in their royalty component.
         /// Allowing transfers to components opens a lot of possibilities for the user to create new and interesting use cases
         /// however it also allows loopholes for avoiding royalties. The creator of a collection should be aware of this.
         /// We effectively turn off the restrictions for deposits, do some foreign method, then turn them back on so a
@@ -378,13 +378,19 @@ mod opentrader {
         pub fn transfer_nft_to_component(
             &mut self,
             royalty_nft: Bucket,
+            // the component of the dapp you want to transfer the NFT to
             component: Global<AnyComponent>,
+            // the name of the method you want to use on this component (i.e. pub fn deposit, etc.)
             custom_method: String,
+            // optional return vec of buckets for things like badges reciepts, etc. from the dapp
+            // should we add the option to be able to send some other asset with the NFT to the dapp?
         ) -> Option<Vec<Bucket>> {
             let mut optional_return: Vec<Bucket> = vec![];
 
+            // we get the package address of the component
             let package_address = component.blueprint_id().package_address;
 
+            // we get the well-known package address of the account components
             let my_bech32_address =
                 "package_rdx1pkgxxxxxxxxxaccntxxxxxxxxxx000929625493xxxxxxxxxaccntx";
             let global_account_address = PackageAddress::try_from_bech32(
@@ -393,11 +399,15 @@ mod opentrader {
             )
             .unwrap();
 
+            // check that we're not passing the asset to a global account address. This is important
+            // to ensure someone isn't bypassing royalties by using this channel to send an NFT to another account.
             assert!(
                 package_address != global_account_address,
                 "Component can not be an account component"
             );
 
+            // Each Royalty NFT has a set level of royalty enforcement - full or partial. So we first get this information
+            // as well as the royalty component address.
             let royalty_nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
 
             let royalty_level: String = royalty_nft_manager
@@ -417,6 +427,8 @@ mod opentrader {
                 ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
             ));
 
+            // if full enforcement is set then we need to send the asset to the royalty component first so that
+            // we can check if the dapp has permission to receive the asset as set by the NFT creator.
             if royalty_level == "Full" {
                 let existing_access_rule = rule!(
                     require_amount(1, self.royal_admin.resource_address())
@@ -438,6 +450,8 @@ mod opentrader {
                 if returned_buckets_full.is_some() {
                     optional_return.extend(returned_buckets_full.unwrap());
                 }
+
+                // otherwise, we just send the nft onto the method that was input.
             } else if royalty_level == "Partial" {
                 self.royal_admin.as_fungible().authorize_with_amount(1, || {
                     let returned_buckets: Option<Vec<Bucket>> =
@@ -452,8 +466,11 @@ mod opentrader {
                 });
             }
 
+            // return any optional buckets that were returned from the dapp
             Some(optional_return)
         }
+
+        // When a dapp wants to send an NFT back to the user - they can use this method to deposit it back to the user.
 
         pub fn deposit_royalty_nft(&mut self, nft: Bucket) {
             self.royal_admin.as_fungible().authorize_with_amount(1, || {
