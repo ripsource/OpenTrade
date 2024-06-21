@@ -47,7 +47,6 @@ pub struct RoyalListing {
 
 #[blueprint]
 mod opentrader {
-    use scrypto::object_modules::royalty;
 
     struct OpenTrader {
         /// The key value store of listings information for NFTs the user has listed for sale.
@@ -116,7 +115,7 @@ mod opentrader {
             .globalize()
         }
 
-        // Royalty Enforced Methods //
+        //👑👑👑  Royalty Enforced Methods 👑👑👑 //
 
         /// Lists an NFT for sale by the user. The user provides the NFT, the price, the currency,
         /// and the ResourceAddress of a badge that a secondary seller must have to sell the NFT.
@@ -197,21 +196,25 @@ mod opentrader {
             })
         }
 
-        /// The intention is that in the majority of cases, a marketplace would call this method using their marketplace
-        /// badge to authenticate the purchase, get the NFT and return it to the user on their platform.
+        /// The intention is that in the majority of cases, a marketplace would call this method using their
+        /// marketplace badge to authenticate the purchase, get the NFT and return it to the user on their platform.
         /// However, for a private deal, a user could call this method directly with a badge issued by the listing creator for this deal.
         pub fn purchase_royal_listing(
             &mut self,
-            // The NFTGID of the NFT to purchase
+            // The NFGID of the NFT to purchase
             nfgid: NonFungibleGlobalId,
             // The payment for the NFT
             payment: FungibleBucket,
             // The badge of the marketplace or private buyer that is purchasing the NFT
-            permission: NonFungibleProof,
+            permission: Proof,
             // The account that the NFT should be sent to
             mut account_recipient: Global<Account>,
         ) -> Vec<Bucket> {
             let mut payment_buckets = vec![];
+
+            // First authenticate the proof to check that the marketplace or private buyer has the correct permissions to purchase the NFT
+            // We are just using a resource address as validation here - however this could be a more complex check in the future for local ids
+            // so that for private deals a brand new resource doesn't need to be created.
 
             {
                 let trading_permission = permission.resource_address();
@@ -229,6 +232,9 @@ mod opentrader {
                 );
             }
 
+            // We get the marketplace fee rate from the metadata of the proof
+            // TO DO for a private sale, we need to wrap this step with a check otherwise it will panic for a private deal.
+
             let marketplace_fee_rate: Decimal = permission
                 .skip_checking()
                 .resource_manager()
@@ -236,8 +242,12 @@ mod opentrader {
                 .unwrap()
                 .unwrap();
 
+            // We calculate the marketplace fee from the payment amount.
+            // This could be an unsafe decimal at this point - however when taking from the payment we use a safe rounding mode.
+
             let marketplace_fee = payment.amount().checked_mul(marketplace_fee_rate).unwrap();
 
+            // We retrieve basic information about the listing, such as price, currency and time of the listing.
             {
                 let listing = self
                     .royal_listings
@@ -258,6 +268,10 @@ mod opentrader {
                     "[purchase] Payment currency does not match listing currency",
                 );
 
+                // As mentioned elsewhere - we want to ensure no one can do an atomic transaction of listing and purchasing a Royalty NFT
+                // as this would provide a loophole for trading NFTs without paying royalties. We do this by checking the time of the listing
+                // and the time of the purchase. If they are the same, we abort the transaction.
+                // Currently this is done to the second - however if there's is a more granular alternative, that would be prefferable.
                 let time_of_listing = listing.time_of_listing;
 
                 let time_of_purchase = Clock::current_time_rounded_to_seconds();
@@ -266,6 +280,8 @@ mod opentrader {
                     !time_of_purchase.compare(time_of_listing, TimeComparisonOperator::Eq),
                     "[purchase] Purchase made within the same second as listing is not allowed."
                 );
+
+                // We get the NFT from the vault
 
                 let mut vault = self
                     .nft_vaults
@@ -276,6 +292,7 @@ mod opentrader {
 
                 let nft_address = nft.resource_address();
 
+                // We get the royalty component address from the NFT metadata
                 let royalty_component_global_address: GlobalAddress =
                     ResourceManager::from_address(nft_address)
                         .get_metadata("royalty_component")
@@ -289,10 +306,12 @@ mod opentrader {
                     ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
                 ));
 
+                // We send the full payment to the nft so that it can take its %fee
                 let mut remainder_after_royalty: Bucket =
                     Global::<AnyComponent>::from(call_address)
                         .call_raw("pay_royalty", scrypto_args!(nft_address, payment));
 
+                // we then take the marketplaces fee (we've already calculated this earlier based on the full payment amount).
                 let marketplace_revenue = remainder_after_royalty.take_advanced(
                     marketplace_fee,
                     WithdrawStrategy::Rounded(RoundingMode::ToZero),
@@ -300,6 +319,7 @@ mod opentrader {
 
                 payment_buckets.push(marketplace_revenue);
 
+                // Sales revenue for the trader is then stored. In the future it would be good to utilise AccountLockers for better UX.
                 let sales_vault_exists = self.sales_revenue.get(&currency).is_some();
 
                 if sales_vault_exists {
@@ -313,6 +333,9 @@ mod opentrader {
                 }
                 // self.account_locker
                 //     .store(self.my_account, submit_royalty, true);
+
+                // Finally we send the NFT to the account recipient
+
                 self.royal_admin.as_fungible().authorize_with_amount(1, || {
                     account_recipient.try_deposit_or_abort(nft.into(), None);
                 });

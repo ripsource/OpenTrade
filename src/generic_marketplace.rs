@@ -68,10 +68,11 @@ mod generic_marketplace {
             account_recipient: Global<Account>,
         ) {
             let nflid = NonFungibleLocalId::integer(1u64.into());
-            let proof_creation = self
+            let proof_creation: Proof = self
                 .marketplace_listing_key_vault
                 .as_non_fungible()
-                .create_proof_of_non_fungibles(&indexset![nflid]);
+                .create_proof_of_non_fungibles(&indexset![nflid])
+                .into();
 
             let mut fee: Vec<Bucket> = open_sale_address.call_raw::<Vec<Bucket>>(
                 "purchase_royal_listing",
