@@ -47,6 +47,7 @@ pub struct RoyalListing {
 
 #[blueprint]
 mod opentrader {
+    use scrypto::object_modules::royalty;
 
     struct OpenTrader {
         /// The key value store of listings information for NFTs the user has listed for sale.
@@ -344,17 +345,21 @@ mod opentrader {
         }
 
         /// Transfers an NFT to a component. This method is used to transfer an NFT to a component that is not an account.
-        /// This can only work if the Royalty NFT has selected the royalty enforcement level to be: Partial.
+        /// This can only work if the Royalty NFT has selected the royalty enforcement level to be: Partial or if Full, the creator
+        /// must have permissioned the dapp in the royalty component.
         /// Allowing transfers to components opens a lot of possibilities for the user to create new and interesting use cases
-        /// however it also allows loopholes for avoiding royalties. The creator of a collection should be aware of this,
-        /// but realistically, it may be some time before they have to consider a fully scaled marketplace that uses these
-        /// undermining tactics.
+        /// however it also allows loopholes for avoiding royalties. The creator of a collection should be aware of this.
+        /// We effectively turn off the restrictions for deposits, do some foreign method, then turn them back on so a
+        /// dapp can do what they need to with the asset.
+        /// We provide an optional return of a vector of buckets, which should cover most use cases.
         pub fn transfer_nft_to_component(
             &mut self,
             royalty_nft: Bucket,
             component: Global<AnyComponent>,
             custom_method: String,
-        ) {
+        ) -> Option<Vec<Bucket>> {
+            let mut optional_return: Vec<Bucket> = vec![];
+
             let package_address = component.blueprint_id().package_address;
 
             let my_bech32_address =
@@ -370,33 +375,64 @@ mod opentrader {
                 "Component can not be an account component"
             );
 
-            // TO DO - add method to royalty component to allow transfer to component by
-            // unlocked deposits, then relocking within a single method.
+            let royalty_nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
 
-            self.royal_admin.as_fungible().authorize_with_amount(1, || {
-                let royalty_nft_manager =
-                    ResourceManager::from_address(royalty_nft.resource_address());
+            let royalty_level: String = royalty_nft_manager
+                .get_metadata("royalty_level")
+                .unwrap()
+                .unwrap();
 
-                let royalty_component_global_address: GlobalAddress = royalty_nft_manager
-                    .get_metadata("royalty_component")
-                    .unwrap()
-                    .unwrap();
+            let royalty_component_global_address: GlobalAddress = royalty_nft_manager
+                .get_metadata("royalty_component")
+                .unwrap()
+                .unwrap();
 
-                let royalty_component =
-                    ComponentAddress::new_or_panic(royalty_component_global_address.into());
+            let royalty_component =
+                ComponentAddress::new_or_panic(royalty_component_global_address.into());
 
-                let call_address: Global<AnyComponent> = Global(ObjectStub::new(
-                    ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
-                ));
+            let call_address: Global<AnyComponent> = Global(ObjectStub::new(
+                ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
+            ));
 
-                Global::<AnyComponent>::from(call_address).call_raw::<()>(
-                    "transfer_to_component",
-                    scrypto_args!(royalty_nft, custom_method),
+            if royalty_level == "Full" {
+                let existing_access_rule = rule!(
+                    require_amount(1, self.royal_admin.resource_address())
+                        || require(global_caller(royalty_component))
                 );
-            });
+
+                let nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
+
+                nft_manager.set_depositable(rule!(allow_all));
+
+                let returned_buckets_full: Option<Vec<Bucket>> =
+                    Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
+                        "transfer_to_component",
+                        scrypto_args!(royalty_nft, custom_method.clone()),
+                    );
+
+                nft_manager.set_depositable(existing_access_rule);
+
+                if returned_buckets_full.is_some() {
+                    optional_return.extend(returned_buckets_full.unwrap());
+                }
+            } else if royalty_level == "Partial" {
+                self.royal_admin.as_fungible().authorize_with_amount(1, || {
+                    let returned_buckets: Option<Vec<Bucket>> =
+                        Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
+                            "transfer_to_component",
+                            scrypto_args!(royalty_nft, custom_method.clone()),
+                        );
+
+                    if returned_buckets.is_some() {
+                        optional_return.extend(returned_buckets.unwrap());
+                    }
+                });
+            }
+
+            Some(optional_return)
         }
 
-        pub fn deposit_from_dapp(&mut self, nft: Bucket) {
+        pub fn deposit_royalty_nft(&mut self, nft: Bucket) {
             self.royal_admin.as_fungible().authorize_with_amount(1, || {
                 self.my_account.try_deposit_or_abort(nft.into(), None);
             });

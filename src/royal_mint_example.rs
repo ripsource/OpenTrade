@@ -5,6 +5,9 @@ use scrypto::prelude::*;
 // to allow a creator to reveal the collection after minting, and a royalty payment vault/method to allow collection of royalties.
 // It's possible that the minting process could be separated from the royalty payment process, but this blueprint combines them for simplicity.
 
+// For a minting process - its likely this could be made into a factory component for no-code creators - however anyone could bring their own component and just add in
+// the deposit rules and resource top-level metadata required for the royalty system.
+
 #[derive(ScryptoSbor, NonFungibleData)]
 struct Rascal {
     name: String,
@@ -43,7 +46,7 @@ mod royal_rascals {
         /// The royalty percentage to be paid to the creator of the Royal Rascals
         royalty_percent: Decimal,
 
-        /// Royalty maximum level :: To Do
+        /// Royalty maximum level - once set can not be increased. It can be decreased though. :: To Do
         maximum_royalty_percent: Decimal,
 
         /// lock royalty configuration: Option can give traders confidence that the royalty percentage/settings will not change.
@@ -135,8 +138,8 @@ mod royal_rascals {
                     // This rule creates the restriction that stops the NFTs from being traded without a royalty payment.
                     // Only the royalty component can bypass this rule and trader accounts can bypass this rule.
                     .deposit_roles(deposit_roles! {
-                        depositor => depositer_admin_rule;
-                        depositor_updater => global_caller_badge_rule.clone();
+                        depositor => depositer_admin_rule.clone();
+                        depositor_updater => depositer_admin_rule;
                     })
                     .non_fungible_data_update_roles(non_fungible_data_update_roles! {
                         non_fungible_data_updater => creator_admin_rule.clone();
@@ -330,7 +333,7 @@ mod royal_rascals {
             self.royalty_percent = new_royalty_percent;
         }
 
-        pub fn update_royalty_level(&mut self, new_royalty_level: String) {
+        pub fn update_royalty_level(&mut self, change_royalty_level: String) {
             assert!(
                 !self.royalty_configuration_locked,
                 "Royalty configuration is locked"
@@ -340,14 +343,15 @@ mod royal_rascals {
             //     .update_metadata("royalty_level", new_royalty_level);
         }
 
-        /// Possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement
-        /// Allow any dapp if royalties set to partial.
+        /// Possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement - requires the dApp to be permissioned - transfer occurs here.
+        /// If the metadata on the resource is set to 'partial' enforcement then any dApp can interact with the NFT - the transfer occurs directly from the trading account component.
+        /// We allow an optional return of a vector of buckets which should cover most use cases for dApps.
         pub fn transfer_royalty_nft_to_dapp(
             &mut self,
             nft: Bucket,
             dapp: ComponentAddress,
             custom_method: String,
-        ) {
+        ) -> Option<Vec<Bucket>> {
             assert!(
                 self.permissioned_dapps.get(&dapp).is_some(),
                 "This dApp has not been permissioned by the collection creator"
@@ -362,12 +366,15 @@ mod royal_rascals {
             self.rascal_manager.set_depositable(rule!(allow_all));
 
             // send nft to dapp
-            call_address.call_raw::<()>(manfiest_method, scrypto_args!(nft));
+            let optional_returned_buckets =
+                call_address.call_raw::<Option<Vec<Bucket>>>(manfiest_method, scrypto_args!(nft));
 
             self.rascal_manager.set_depositable(rule!(
                 require_amount(1, self.depositer_admin)
                     || require(global_caller(self.royalty_component))
             ));
+
+            optional_returned_buckets
         }
     }
 }
