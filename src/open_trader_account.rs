@@ -15,26 +15,13 @@ pub struct Listing {
     secondary_seller_permissions: Vec<ResourceAddress>,
     /// The seller is able to decide what currency they want to sell their NFT in (e.g. XRD, FLOOP, EARLY, HUG)
     currency: ResourceAddress,
-    /// The price of the NFT - this price will be subject to marketplace fees which are taken as a % of this amount.
-    price: Decimal,
-    /// The NFTGID being recorded is potentially redundant as it is the key of the listing in the listings key value store.
-    /// The actual NFT is stored in the key value store of vaults separately.
-    nfgid: NonFungibleGlobalId,
-}
-
-#[derive(ScryptoSbor)]
-pub struct RoyalListing {
-    /// The permissions that a secondary seller must have to sell an NFT. This is used to ensure that only selected
-    /// marketplaces or private buyers can buy an NFT.
-    secondary_seller_permissions: Vec<ResourceAddress>,
-    /// The seller is able to decide what currency they want to sell their NFT in (e.g. XRD, FLOOP, EARLY, HUG)
-    currency: ResourceAddress,
     /// The price of the NFT - this price will be subject to marketplace fees and creator royalties which are taken as a % of this amount.
     price: Decimal,
     /// The NFTGID being recorded is potentially redundant as it is the key of the listing in the listings key value store.
     /// The actual NFT is stored in the key value store of vaults separately.
     nfgid: NonFungibleGlobalId,
-    ///  // Because you can construct transactions atomically on Radix - you could technically list an NFT for 0 XRD,
+    ///
+    /// Because you can construct transactions atomically on Radix - you could technically list a Royalty NFT for 0 XRD,
     // Then in the same transaction, purchase the NFT to another account. This would be a way to send an NFT to another user without paying a royalty
     // potentially.
 
@@ -52,7 +39,7 @@ mod opentrader {
         /// The key value store of listings information for NFTs the user has listed for sale.
         listings: KeyValueStore<NonFungibleGlobalId, Listing>,
         /// The key value store of listings information for Royalty NFTs the user has listed for sale.
-        royal_listings: KeyValueStore<NonFungibleGlobalId, RoyalListing>,
+        royal_listings: KeyValueStore<NonFungibleGlobalId, Listing>,
         /// The key value store of vaults that store all the NFTs that the user has listed for sale.
         nft_vaults: KeyValueStore<NonFungibleGlobalId, Vault>,
         /// The key value store of vaults that store all the revenue the user has made from sales.
@@ -163,7 +150,7 @@ mod opentrader {
 
             let time_of_listing = Clock::current_time_rounded_to_seconds();
 
-            let new_listing = RoyalListing {
+            let new_listing = Listing {
                 secondary_seller_permissions: permissions,
                 currency,
                 price,
@@ -479,14 +466,14 @@ mod opentrader {
         }
 
         // Non-Royalty Enforced Methods
-        // I've not implemented these methods yet
+        // I've not implemented these methods fully yet
         // lots to change up so can be ignored.
         // Overall - handling non-royalty NFTs is much simpler as there are no royalties to pay - so has not been
         // a priority to implement yet.
 
         pub fn list(
             &mut self,
-            nft_bucket: NonFungibleBucket,
+            nft_bucket: Bucket,
             currency: ResourceAddress,
             price: Decimal,
             permissions: Vec<ResourceAddress>,
@@ -508,14 +495,17 @@ mod opentrader {
 
             let nfgid = NonFungibleGlobalId::new(
                 nft_bucket.resource_address(),
-                nft_bucket.non_fungible_local_id(),
+                nft_bucket.as_non_fungible().non_fungible_local_id(),
             );
+
+            let time_of_listing = Clock::current_time_rounded_to_seconds();
 
             let new_listing = Listing {
                 secondary_seller_permissions: permissions,
                 currency,
                 price,
                 nfgid: nfgid.clone(),
+                time_of_listing,
             };
 
             self.nft_vaults
@@ -614,11 +604,11 @@ mod opentrader {
             nfgid: NonFungibleGlobalId,
             payment: FungibleBucket,
             permission: Proof,
-        ) -> Vec<NonFungibleBucket> {
-            let mut nft_bucket: Vec<NonFungibleBucket> = vec![];
+        ) -> Vec<Bucket> {
+            let mut nft_bucket: Vec<Bucket> = vec![];
 
             {
-                let mut listing = self
+                let listing = self
                     .listings
                     .get_mut(&nfgid)
                     .expect("[purchase] Listing not found");
@@ -636,8 +626,6 @@ mod opentrader {
                     payment.resource_address() == currency,
                     "[purchase] Payment currency does not match listing currency",
                 );
-
-                let mut nft_bucket: Vec<Bucket> = vec![];
 
                 {
                     let mut nft = self
