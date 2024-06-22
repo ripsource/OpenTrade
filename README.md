@@ -1,6 +1,6 @@
 # In Live Development - Proof of Concept - not production ready, nor complete in any fashion.
 
-This set of blueprints sets out the infrastructure for decentralised NFT trading on Radix, where 1 NFT can be listed on multiple marketplaces at the same time. The intention is to allow for users to have control over their assets, while ensuring marketplace aggregators can earn fees for their services and creators can enforce royalties in a flexible way. 
+This set of blueprints sets out the infrastructure for decentralised NFT trading on Radix, where 1 NFT can be listed on multiple marketplaces at the same time. The intention is to allow for users to have control over their assets, while ensuring marketplace aggregators can earn fees for their services and creators can enforce royalties in a highly configurable way. 
 
 You'll find basic blueprints for:
 - A shared-escrow account for individual traders to use for listing their NFTs as well as for purchasers to buy from.
