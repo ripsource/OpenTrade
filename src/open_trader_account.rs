@@ -19,7 +19,7 @@ pub struct Listing {
     price: Decimal,
     /// The NFTGID being recorded is potentially redundant as it is the key of the listing in the listings key value store.
     /// The actual NFT is stored in the key value store of vaults separately.
-    vault: Vault,
+    nfgid: NonFungibleGlobalId,
 }
 
 #[derive(ScryptoSbor)]
@@ -93,8 +93,7 @@ mod opentrader {
 
             let (auth_key_resource, auth_key_local) = auth_key.into_parts();
 
-            let virtual_badge_local =
-                virtual_badge.as_non_fungible().non_fungible_local_id();
+            let virtual_badge_local = virtual_badge.as_non_fungible().non_fungible_local_id();
 
             Self {
                 auth_key_local,
@@ -246,8 +245,7 @@ mod opentrader {
             // We calculate the marketplace fee from the payment amount.
             // This could be an unsafe decimal at this point - however when taking from the payment we use a safe rounding mode.
 
-            let marketplace_fee =
-                payment.amount().checked_mul(marketplace_fee_rate).unwrap();
+            let marketplace_fee = payment.amount().checked_mul(marketplace_fee_rate).unwrap();
 
             // We retrieve basic information about the listing, such as price, currency and time of the listing.
             {
@@ -301,34 +299,28 @@ mod opentrader {
                         .unwrap()
                         .unwrap();
 
-                let royalty_component = ComponentAddress::new_or_panic(
-                    royalty_component_global_address.into(),
-                );
+                let royalty_component =
+                    ComponentAddress::new_or_panic(royalty_component_global_address.into());
 
-                let call_address: Global<AnyComponent> =
-                    Global(ObjectStub::new(ObjectStubHandle::Global(
-                        GlobalAddress::from(royalty_component),
-                    )));
+                let call_address: Global<AnyComponent> = Global(ObjectStub::new(
+                    ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
+                ));
 
                 // We send the full payment to the nft so that it can take its %fee
                 let mut remainder_after_royalty: Bucket =
-                    Global::<AnyComponent>::from(call_address).call_raw(
-                        "pay_royalty",
-                        scrypto_args!(nft_address, payment),
-                    );
+                    Global::<AnyComponent>::from(call_address)
+                        .call_raw("pay_royalty", scrypto_args!(nft_address, payment));
 
                 // we then take the marketplaces fee (we've already calculated this earlier based on the full payment amount).
-                let marketplace_revenue = remainder_after_royalty
-                    .take_advanced(
-                        marketplace_fee,
-                        WithdrawStrategy::Rounded(RoundingMode::ToZero),
-                    );
+                let marketplace_revenue = remainder_after_royalty.take_advanced(
+                    marketplace_fee,
+                    WithdrawStrategy::Rounded(RoundingMode::ToZero),
+                );
 
                 payment_buckets.push(marketplace_revenue);
 
                 // Sales revenue for the trader is then stored. In the future it would be good to utilise AccountLockers for better UX.
-                let sales_vault_exists =
-                    self.sales_revenue.get(&currency).is_some();
+                let sales_vault_exists = self.sales_revenue.get(&currency).is_some();
 
                 if sales_vault_exists {
                     self.sales_revenue
@@ -336,8 +328,7 @@ mod opentrader {
                         .unwrap()
                         .put(remainder_after_royalty);
                 } else {
-                    let sales_vault =
-                        Vault::with_bucket(remainder_after_royalty);
+                    let sales_vault = Vault::with_bucket(remainder_after_royalty);
                     self.sales_revenue.insert(currency, sales_vault);
                 }
                 // self.account_locker
@@ -417,28 +408,24 @@ mod opentrader {
 
             // Each Royalty NFT has a set level of royalty enforcement - full or partial. So we first get this information
             // as well as the royalty component address.
-            let royalty_nft_manager =
-                ResourceManager::from_address(royalty_nft.resource_address());
+            let royalty_nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
 
             let royalty_level: String = royalty_nft_manager
                 .get_metadata("royalty_level")
                 .unwrap()
                 .unwrap();
 
-            let royalty_component_global_address: GlobalAddress =
-                royalty_nft_manager
-                    .get_metadata("royalty_component")
-                    .unwrap()
-                    .unwrap();
+            let royalty_component_global_address: GlobalAddress = royalty_nft_manager
+                .get_metadata("royalty_component")
+                .unwrap()
+                .unwrap();
 
-            let royalty_component = ComponentAddress::new_or_panic(
-                royalty_component_global_address.into(),
-            );
+            let royalty_component =
+                ComponentAddress::new_or_panic(royalty_component_global_address.into());
 
-            let call_address: Global<AnyComponent> =
-                Global(ObjectStub::new(ObjectStubHandle::Global(
-                    GlobalAddress::from(royalty_component),
-                )));
+            let call_address: Global<AnyComponent> = Global(ObjectStub::new(
+                ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
+            ));
 
             // if full enforcement is set then we need to send the asset to the royalty component first so that
             // we can check if the dapp has permission to receive the asset as set by the NFT creator.
@@ -448,18 +435,15 @@ mod opentrader {
                         || require(global_caller(royalty_component))
                 );
 
-                let nft_manager = ResourceManager::from_address(
-                    royalty_nft.resource_address(),
-                );
+                let nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
 
                 nft_manager.set_depositable(rule!(allow_all));
 
                 let returned_buckets_full: Option<Vec<Bucket>> =
-                    Global::<AnyComponent>::from(call_address)
-                        .call_raw::<Option<Vec<Bucket>>>(
-                            "transfer_to_component",
-                            scrypto_args!(royalty_nft, custom_method.clone()),
-                        );
+                    Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
+                        "transfer_to_component",
+                        scrypto_args!(royalty_nft, custom_method.clone()),
+                    );
 
                 nft_manager.set_depositable(existing_access_rule);
 
@@ -470,15 +454,11 @@ mod opentrader {
                 // otherwise, we just send the nft onto the method that was input.
             } else if royalty_level == "Partial" {
                 self.royal_admin.as_fungible().authorize_with_amount(1, || {
-                    let returned_buckets: Option<Vec<Bucket>> = Global::<
-                        AnyComponent,
-                    >::from(
-                        call_address
-                    )
-                    .call_raw::<Option<Vec<Bucket>>>(
-                        "transfer_to_component",
-                        scrypto_args!(royalty_nft, custom_method.clone()),
-                    );
+                    let returned_buckets: Option<Vec<Bucket>> =
+                        Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
+                            "transfer_to_component",
+                            scrypto_args!(royalty_nft, custom_method.clone()),
+                        );
 
                     if returned_buckets.is_some() {
                         optional_return.extend(returned_buckets.unwrap());
@@ -504,7 +484,7 @@ mod opentrader {
         // Overall - handling non-royalty NFTs is much simpler as there are no royalties to pay - so has not been
         // a priority to implement yet.
 
-        pub fn market_list_nft(
+        pub fn list(
             &mut self,
             nft_bucket: NonFungibleBucket,
             currency: ResourceAddress,
@@ -535,8 +515,11 @@ mod opentrader {
                 secondary_seller_permissions: permissions,
                 currency,
                 price,
-                vault: Vault::with_bucket(nft_bucket.into()),
+                nfgid: nfgid.clone(),
             };
+
+            self.nft_vaults
+                .insert(nfgid.clone(), Vault::with_bucket(nft_bucket.into()));
 
             self.listings.insert(nfgid, new_listing);
         }
@@ -547,10 +530,8 @@ mod opentrader {
             permission_id: ResourceAddress,
             trader_badge: Proof,
         ) {
-            let trader_badge_checked = trader_badge.check_with_message(
-                self.auth_key_resource,
-                "Incorrect Badge Resource",
-            );
+            let trader_badge_checked =
+                trader_badge.check_with_message(self.auth_key_resource, "Incorrect Badge Resource");
 
             let local_id = trader_badge_checked
                 .as_non_fungible()
@@ -587,11 +568,7 @@ mod opentrader {
             listing.secondary_seller_permissions.push(permission_id);
         }
 
-        pub fn change_price(
-            &mut self,
-            nft_id: NonFungibleGlobalId,
-            new_price: Decimal,
-        ) {
+        pub fn change_price(&mut self, nft_id: NonFungibleGlobalId, new_price: Decimal) {
             let mut listing = self
                 .listings
                 .get_mut(&nft_id)
@@ -604,10 +581,8 @@ mod opentrader {
             nft_id: NonFungibleGlobalId,
             trader_badge: Proof,
         ) -> Vec<Bucket> {
-            let trader_badge_checked = trader_badge.check_with_message(
-                self.auth_key_resource,
-                "Incorrect Badge Resource",
-            );
+            let trader_badge_checked =
+                trader_badge.check_with_message(self.auth_key_resource, "Incorrect Badge Resource");
 
             let local_id = trader_badge_checked
                 .as_non_fungible()
@@ -621,14 +596,12 @@ mod opentrader {
             let mut nft_bucket: Vec<Bucket> = vec![];
 
             {
-                let mut listing = self
-                    .listings
+                let mut nft = self
+                    .nft_vaults
                     .get_mut(&nft_id)
-                    .expect("[cancel] Listing not found");
+                    .expect("[cancel] NFT not found");
 
-                let vault = &mut listing.vault;
-
-                nft_bucket.push(vault.take_all());
+                nft_bucket.push(nft.take_all());
             }
 
             self.listings.remove(&nft_id);
@@ -664,9 +637,16 @@ mod opentrader {
                     "[purchase] Payment currency does not match listing currency",
                 );
 
-                let vault = &mut listing.vault;
+                let mut nft_bucket: Vec<Bucket> = vec![];
 
-                nft_bucket.push(vault.take_all().as_non_fungible());
+                {
+                    let mut nft = self
+                        .nft_vaults
+                        .get_mut(&nfgid)
+                        .expect("[cancel] NFT not found");
+
+                    nft_bucket.push(nft.take_all());
+                }
             }
 
             let marketplace = permission.resource_address();
@@ -694,10 +674,8 @@ mod opentrader {
         // utility methods
 
         pub fn check_creator(&self, trader_badge: Proof) {
-            let trader_badge_checked = trader_badge.check_with_message(
-                self.auth_key_resource,
-                "Incorrect Badge Resource",
-            );
+            let trader_badge_checked =
+                trader_badge.check_with_message(self.auth_key_resource, "Incorrect Badge Resource");
 
             // let trader_badge_checked = trader_badge.check(self.auth_key_resource);
 
