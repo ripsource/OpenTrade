@@ -39,10 +39,10 @@ struct RoyaltyConfig {
     royalty_percent: Decimal,
     /// The maximum royalty percentage that can be set - once set can not be increased. It can be decreased though.
     maximum_royalty_percent: Decimal,
-    /// Offers an option for a creator to only allow trading of their assets in certain currencies (currencies selected in the restricted_currencies field)
+    /// Offers an option for a creator to only allow trading of their assets in certain currencies (currencies selected in the permitted_currencies field)
     restricted_currency_setting: bool,
     /// [Only applicable if restricted_currency_setting is turned on] Currencies that the creator can receive royalties in/an NFT can be traded in (e.g. XRD)
-    restricted_currencies: KeyValueStore<ResourceAddress, ()>,
+    permitted_currencies: KeyValueStore<ResourceAddress, ()>,
     /// [Only applicable if restricted_currency_setting is turned on] Set minimum fixed amounts of royalties for each permitted currency
     /// this is useful if a creator wants to allow private sales, but still ensure they receive royalties.
     minimum_royalty_amounts: KeyValueStore<ResourceAddress, Decimal>,
@@ -169,7 +169,7 @@ mod royal_rascals {
 
             let permissioned_dapps: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
             let permissioned_buyers: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
-            let restricted_currencies: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
+            let permitted_currencies: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
             let minimum_royalty_amounts: KeyValueStore<ResourceAddress, Decimal> =
                 KeyValueStore::new();
 
@@ -190,7 +190,7 @@ mod royal_rascals {
 
                 if restricted_currency_setting {
                     for currency in restricted_currencies_input {
-                        restricted_currencies.insert(currency, ());
+                        permitted_currencies.insert(currency, ());
                     }
                     for (currency, amount) in minimum_royalty_amounts_input {
                         minimum_royalty_amounts.insert(currency, amount);
@@ -207,7 +207,7 @@ mod royal_rascals {
                 royalty_percent,
                 maximum_royalty_percent,
                 restricted_currency_setting,
-                restricted_currencies,
+                permitted_currencies,
                 minimum_royalty_amounts,
                 permissioned_dapps,
                 permissioned_buyers,
@@ -465,21 +465,42 @@ mod royal_rascals {
         // These set of methods offer the ability for the creator modify their royalty settings.
         //
 
+        /// Only possible if the royalty configuration is not locked
         pub fn set_royalty_level_to_full(&mut self) {
+            assert!(
+                !self.royalty_config.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
             self.rascal_manager
                 .set_metadata("royalty_level", "Full".to_owned())
         }
 
+        /// Only possible if the royalty configuration is not locked - However, if
+        /// the royalty level is set to full, then it can be moved down to partial.
+        /// You can always move down a level of enforcement, but you can't move up when locked.
         pub fn set_royalty_level_to_partial(&mut self) {
+            let royalty_level: String = self
+                .rascal_manager
+                .get_metadata("royalty_level")
+                .unwrap()
+                .unwrap();
+            assert!(
+                royalty_level == "None" && !self.royalty_config.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+
             self.rascal_manager
                 .set_metadata("royalty_level", "Partial".to_owned())
         }
 
+        /// You can always set royalty level to none - even if the configuration is locked.
         pub fn set_royalty_level_to_none(&mut self) {
             self.rascal_manager
                 .set_metadata("royalty_level", "None".to_owned())
         }
 
+        /// Only possible if the royalty configuration is not locked
+        /// New percentage fee must be below the maximum set.
         pub fn change_royalty_percentage_fee(&mut self, new_royalty_percent: Decimal) {
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
@@ -494,6 +515,7 @@ mod royal_rascals {
             self.royalty_config.royalty_percent = new_royalty_percent;
         }
 
+        /// you can always lower the maximum royalty percentage - even if the configuration is locked.
         pub fn lower_maximum_royalty_percentage(&mut self, new_max_royalty_percent: Decimal) {
             assert!(
                 new_max_royalty_percent >= self.royalty_config.royalty_percent,
@@ -503,37 +525,57 @@ mod royal_rascals {
             self.royalty_config.maximum_royalty_percent = new_max_royalty_percent;
         }
 
-        pub fn restrict_currencies(&mut self, restricted_currency_setting: bool) {
+        /// Only possible if the royalty configuration is not locked.
+        /// You can always turn this setting off even if the configuration is locked.
+        pub fn restrict_currencies_true(&mut self) {
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
             );
-            self.royalty_config.restricted_currency_setting = restricted_currency_setting;
+            self.royalty_config.restricted_currency_setting = true;
         }
 
-        pub fn add_restricted_currency(&mut self, currency: ResourceAddress) {
+        pub fn restrict_currencies_false(&mut self) {
+            self.royalty_config.restricted_currency_setting = false;
+        }
+
+        // You can only add restricted currencies if the restricted currency setting is turned on.
+        // You can add even if the configuration is locked.
+        pub fn add_permitted_currency(&mut self, currency: ResourceAddress) {
             assert!(
-                !self.royalty_config.royalty_configuration_locked,
-                "Royalty configuration is locked"
+                self.royalty_config.restricted_currency_setting,
+                "Restricted currency setting is not turned on"
             );
             self.royalty_config
-                .restricted_currencies
+                .permitted_currencies
                 .insert(currency, ());
         }
 
-        pub fn remove_restricted_currency(&mut self, currency: ResourceAddress) {
+        // You can only remove restricted currencies if the restricted currency setting is turned on.
+        // You can't remove currencies if the configuration is locked.
+        pub fn remove_permitted_currency(&mut self, currency: ResourceAddress) {
+            assert!(
+                self.royalty_config.restricted_currency_setting,
+                "Restricted currency setting is not turned on"
+            );
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
             );
-            self.royalty_config.restricted_currencies.remove(&currency);
+            self.royalty_config.permitted_currencies.remove(&currency);
         }
 
+        // You can only set minimum royalty amounts if the restricted currency setting is turned on.
+        // You can't set minimum amounts if the configuration is locked.
         pub fn set_minimum_royalty_amount(
             &mut self,
             currency: ResourceAddress,
             minimum_royalty_amount: Decimal,
         ) {
+            assert!(
+                self.royalty_config.restricted_currency_setting,
+                "Restricted currency setting is not turned on"
+            );
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
@@ -543,24 +585,25 @@ mod royal_rascals {
                 .insert(currency, minimum_royalty_amount);
         }
 
+        // You can only remove minimum royalty amounts if the restricted currency setting is turned on.
+        // You can remove even if the configuration is locked.
         pub fn remove_minimum_royalty_amount(&mut self, currency: ResourceAddress) {
             assert!(
-                !self.royalty_config.royalty_configuration_locked,
-                "Royalty configuration is locked"
+                self.royalty_config.restricted_currency_setting,
+                "Restricted currency setting is not turned on"
             );
             self.royalty_config
                 .minimum_royalty_amounts
                 .remove(&currency);
         }
 
+        // Permissioned dapps settings only work with FULL royalty enforcement.
+        // You can add even if the configuration is locked.
         pub fn add_permissioned_dapp(&mut self, dapp: ComponentAddress) {
-            assert!(
-                !self.royalty_config.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
             self.royalty_config.permissioned_dapps.insert(dapp, ());
         }
 
+        // You can't remove dapps if the configuration is locked.
         pub fn remove_permissioned_dapp(&mut self, dapp: ComponentAddress) {
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
@@ -569,14 +612,13 @@ mod royal_rascals {
             self.royalty_config.permissioned_dapps.remove(&dapp);
         }
 
+        // Permissioned buyers settings only work with FULL royalty enforcement.
+        // You can always add more permissioned buyers even if the configuration is locked.
         pub fn add_permissioned_buyer(&mut self, buyer: ComponentAddress) {
-            assert!(
-                !self.royalty_config.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
             self.royalty_config.permissioned_buyers.insert(buyer, ());
         }
 
+        // You can't remove buyers if the configuration is locked.
         pub fn remove_permissioned_buyer(&mut self, buyer: ComponentAddress) {
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
@@ -585,6 +627,7 @@ mod royal_rascals {
             self.royalty_config.permissioned_buyers.remove(&buyer);
         }
 
+        // You can't change to deny_all buyers if the configuration is locked.
         pub fn deny_all_buyers(&mut self) {
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
@@ -593,6 +636,7 @@ mod royal_rascals {
             self.royalty_config.allow_all_buyers = false;
         }
 
+        // You can allow all buyers even if the configuration is locked
         pub fn allow_all_buyers(&mut self) {
             self.royalty_config.allow_all_buyers = true;
         }
