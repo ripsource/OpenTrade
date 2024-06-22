@@ -31,6 +31,7 @@ The design hopes to boast the following features:
 - %fee Royalties are supported for newly minted collections
 - Use a standard template to mint collections that are fully integrated with the trading system
 - BYOB - Bring your own blueprint, integration to your collection requires only a few lines of Scrypto
+- Add advanced reactive functionality to your NFTs, such as traits updating when your NFTs are bought or transferred.
 - Configure royalty enforcement level at any time:
     - allow only users to hold your NFTs + select specific dApps that can hold/interact with your NFTs (High royalty enforcement)
     - allow users and any dApps to hold your NFTs (Medium royalty enforcement)
