@@ -26,6 +26,8 @@ The design hopes to boast the following features:
 
 ## For NFT Creators
 - Any existing collection or new collection no matter how it is minted is compatible with this system
+- It is completely free to set up and manage
+- There is 0 lockin. Something better comes along? No problem, no fee.
 - %fee Royalties are supported for newly minted collections
 - Use a standard template to mint collections that are fully integrated with the trading system
 - BYOB - Bring your own blueprint, integration to your collection requires only a few lines of Scrypto
