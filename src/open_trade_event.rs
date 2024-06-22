@@ -43,7 +43,9 @@ mod event {
     }
 
     impl Event {
-        pub fn create_event_listener(virtual_badge_auth: ResourceAddress) -> Global<Event> {
+        pub fn create_event_listener(
+            virtual_badge_auth: ResourceAddress,
+        ) -> Global<Event> {
             let (event_address_reservation, _event_component_address) =
                 Runtime::allocate_component_address(Event::blueprint_id());
 

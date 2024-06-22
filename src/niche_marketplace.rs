@@ -18,14 +18,21 @@ mod niche_marketplace {
     }
 
     impl Marketplace {
-        pub fn start_marketplace(marketplace_fee: Decimal) -> (Global<Marketplace>, Bucket) {
-            let (marketplace_address_reservation, marketplace_component_address) =
-                Runtime::allocate_component_address(Marketplace::blueprint_id());
+        pub fn start_marketplace(
+            marketplace_fee: Decimal,
+        ) -> (Global<Marketplace>, Bucket) {
+            let (
+                marketplace_address_reservation,
+                marketplace_component_address,
+            ) = Runtime::allocate_component_address(Marketplace::blueprint_id());
 
             // let global_caller_badge_rule =
             //     rule!(require(global_caller(marketplace_component_address)));
 
-            let admin_key = ResourceBuilder::new_integer_non_fungible::<AdminKey>(OwnerRole::None)
+            let admin_key =
+                ResourceBuilder::new_integer_non_fungible::<AdminKey>(
+                    OwnerRole::None,
+                )
                 .mint_initial_supply([(1u64.into(), AdminKey {})]);
 
             let marketplace_listing_key =
@@ -42,11 +49,14 @@ mod niche_marketplace {
                     })
                     .mint_initial_supply([(1.into(), MarketPlacePermission {})]);
 
-            let key_manager =
-                ResourceManager::from_address(marketplace_listing_key.resource_address());
+            let key_manager = ResourceManager::from_address(
+                marketplace_listing_key.resource_address(),
+            );
 
             let component_address = Self {
-                marketplace_listing_key_vault: Vault::with_bucket(marketplace_listing_key.into()),
+                marketplace_listing_key_vault: Vault::with_bucket(
+                    marketplace_listing_key.into(),
+                ),
                 marketplace_key_manager: key_manager,
                 marketplace_admin: admin_key.resource_manager(),
                 marketplace_fee,
@@ -73,10 +83,16 @@ mod niche_marketplace {
                 .as_non_fungible()
                 .create_proof_of_non_fungibles(&indexset![nflid]);
 
-            let (nft, fee): (Bucket, Bucket) = open_sale_address.call_raw::<(Bucket, Bucket)>(
-                "purchase_royal_listing",
-                scrypto_args!(nfgid, payment, proof_creation, account_recipient),
-            );
+            let (nft, fee): (Bucket, Bucket) =
+                open_sale_address.call_raw::<(Bucket, Bucket)>(
+                    "purchase_royal_listing",
+                    scrypto_args!(
+                        nfgid,
+                        payment,
+                        proof_creation,
+                        account_recipient
+                    ),
+                );
 
             let fee_resource = fee.resource_address();
 

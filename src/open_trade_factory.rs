@@ -27,31 +27,37 @@ mod openhub {
             let (event_address_reservation, event_component_address) =
                 Runtime::allocate_component_address(OpenHub::blueprint_id());
 
-            let global_caller_badge_rule = rule!(require(global_caller(event_component_address)));
+            let global_caller_badge_rule =
+                rule!(require(global_caller(event_component_address)));
 
             let virtual_trader_badge =
-                ResourceBuilder::new_ruid_non_fungible::<TraderKey>(OwnerRole::None)
-                    .mint_roles(mint_roles! {
-                        minter => global_caller_badge_rule.clone();
-                        minter_updater => rule!(deny_all);
-                    })
-                    .create_with_no_initial_supply();
-
-            let open_trader_account_badge =
-                ResourceBuilder::new_ruid_non_fungible::<TraderKey>(OwnerRole::None)
-                    .mint_roles(mint_roles! {
-                        minter => global_caller_badge_rule.clone();
-                        minter_updater => rule!(deny_all);
-                    })
-                    .create_with_no_initial_supply();
-
-            let royal_nft_depositer_badge = ResourceBuilder::new_fungible(OwnerRole::None)
+                ResourceBuilder::new_ruid_non_fungible::<TraderKey>(
+                    OwnerRole::None,
+                )
                 .mint_roles(mint_roles! {
                     minter => global_caller_badge_rule.clone();
                     minter_updater => rule!(deny_all);
                 })
-                .divisibility(0)
                 .create_with_no_initial_supply();
+
+            let open_trader_account_badge =
+                ResourceBuilder::new_ruid_non_fungible::<TraderKey>(
+                    OwnerRole::None,
+                )
+                .mint_roles(mint_roles! {
+                    minter => global_caller_badge_rule.clone();
+                    minter_updater => rule!(deny_all);
+                })
+                .create_with_no_initial_supply();
+
+            let royal_nft_depositer_badge =
+                ResourceBuilder::new_fungible(OwnerRole::None)
+                    .mint_roles(mint_roles! {
+                        minter => global_caller_badge_rule.clone();
+                        minter_updater => rule!(deny_all);
+                    })
+                    .divisibility(0)
+                    .create_with_no_initial_supply();
 
             Self {
                 virtual_trader_badge,
@@ -84,7 +90,8 @@ mod openhub {
                     .non_fungible_local_id(),
             );
 
-            let depositer_permission_badge = self.royal_nft_depositer_badge.mint(1);
+            let depositer_permission_badge =
+                self.royal_nft_depositer_badge.mint(1);
 
             // Instatiation of a trading account via the open_trader_account blueprint, passing in badges that will be locked in the accounts.
             OpenTrader::create_trader(
