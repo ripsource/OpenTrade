@@ -1,5 +1,6 @@
 use scrypto::prelude::*;
 
+/// Overview
 // This blueprint is an example of a way to mint a new Royalty NFT collection, including a random mint/reveal process.
 // However, not all of this is required for a new collection and creators can choose to implement only the parts that
 // are necessary for their use case. This blueprint combines the minting process including a reveal step
@@ -10,6 +11,24 @@ use scrypto::prelude::*;
 // component and just add in the deposit rules and resource top-level metadata required for the royalty system. In fact, some interesting
 // opportunites are available for creators to design reactive traits/features based on the trading activity and interaction of components with their NFTs.
 
+/// About Royalties
+/// *** There are three royalty enforcement levels - They are set on resource metadata directly and not stored in the RoyaltyConfig struct. *** ///
+///
+/// Full Royalty Enforcement: Only permissioned dApps and marketplaces can interact with the NFT. You also have advanced options for restricting
+/// currencies used, restricting private trades of your NFTs by requiring a minimum amount of a currency is paid or block them completely.
+/// This is the most secure setting and is recommended for creators who want to ensure royalties are always paid.
+///
+///
+/// Partial Royalty Enforcement: Any dApp can interact with the NFTs and traders can privately trade your NFTs. This is a good setting for creators who
+/// want to allow lots of interoperability and trading of their NFTs. However, it's important to note that this setting could allow traders to bypass royalties in certain
+/// circumstances. Creators should monitor their royalties and their NFTs to ensure they are being traded correctly and if they see a problematic trend, could then
+/// heighten their royalty enforcement.
+///
+/// No Royalty Enforcement: This setting makes NFTs work like any others - anyone can trade them, use them in any dApp, etc. However, if you've set up your NFTs with this
+/// royalty config, you could still change the settings later to enforce royalties. It's a good setting for creators who want to allow their NFTs to be used in a wide range
+/// of dApps and by a wide range of traders and have an alternative revenue model to royalties, but may still want to access some of the dynamic features of the royalty system later.
+///
+///
 /// The royalty config struct holds all the settings a creator can modify in relation to royalties on their NFTs.
 /// There are tonnes of options and fine tuning you can do - in general, I would expect set-up platforms to offer some pre-made config options.
 /// Then an advanced mode for creators to fine-tune their settings.
@@ -32,10 +51,6 @@ struct RoyaltyConfig {
     /// [Only applicable if royalty-enforcement set to FULL] A permission list for marketplaces/buyers that can trade the NFTs
     /// This requires that a certain badge is shown by the buyer or marketplace in order to purchase an NFT.
     permissioned_buyers: KeyValueStore<ComponentAddress, ()>,
-    /// Full royalty enforcement is the most restrictive setting, with options for finer tuned control.
-    full_royalty_enforcement: bool,
-    /// Partial royalty enforcement is a less restrictive setting, allowing more flexibility for trading/currencies/dapps.
-    partial_royalty_enforcement: bool,
     /// [Only applicable if royalty-enforcement set to FULL] By default full enforcement only allows permissioned buyers (such as marketplaces)
     /// to trade the NFTs. This is useful because private traders could trade the NFTs without paying royalties, so this closes that loophole.
     /// However, this can be turned off if the creator wants to allow any trader to trade the NFTs. If a creator wants to allow private sales,
@@ -94,16 +109,44 @@ mod royal_rascals {
 
     impl RoyalRascals {
         pub fn start_minting_rascals(
+            // generic minting inputs (could be any set up for minting the collection)
             mint_price: Decimal,
             mint_currency: ResourceAddress,
             collection_cap: u64,
-            royalty_percent: Decimal,
-            maximum_royalty_percent: Decimal,
-            full_royalty_enforcement: bool,
-            partial_royalty_enforcement: bool,
-            royalty_configuration_locked: bool,
+
             // Required to enable trader accounts to interact with royalty NFTs
             depositer_admin: ResourceAddress,
+
+            // royalty settings input
+            royalty_percent: Decimal,
+            maximum_royalty_percent: Decimal,
+
+            // Full enforcement requires a number of sub-advanced settings to be set
+            full_royalty_enforcement: bool,
+            // While Radix NFTs are relatively nascient - this setting may be preffable and the easiest to setup for a creator
+            // Any dApp and any buyer can trade the NFTs, its only if loopholes are exploited that the creator may want to lock down the settings.
+            // In any case, it's unlikley to be on a concerning scale for a creator.
+            partial_royalty_enforcement: bool,
+
+            //-----  Only applicable if full royalty enforcement is set to true -----//
+
+            // Can be used to allow private sales, but not allow any loopholes.
+            // If set, you should set permissioned buyers and consider setting minimum royalty amounts/setting restricted currencies.
+            allow_all_buyers: bool,
+
+            // This is relevant for transfers of an NFT to a component/Dapp - not for trading the NFTs.
+            permissioned_dapps: Vec<ComponentAddress>,
+
+            // Only applicable if allow_all_buyers is set to false
+            permissioned_buyers: Vec<ComponentAddress>,
+
+            // only applicable if you want to restrict the currencies that can be used to pay royalties and/or you have allow_all_buyers is set to false
+            restricted_currency_setting: bool,
+            restricted_currencies: Vec<ResourceAddress>,
+            minimum_royalty_amounts: HashMap<ResourceAddress, Decimal>,
+
+            // (reccommend setting to false and later locking the configuration if desired)
+            royalty_configuration_locked: bool,
         ) -> (Global<RoyalRascals>, FungibleBucket) {
             let (rascal_address_reservation, royalty_component_address) =
                 Runtime::allocate_component_address(RoyalRascals::blueprint_id());
@@ -140,9 +183,7 @@ mod royal_rascals {
                 minimum_royalty_amounts: KeyValueStore::new(),
                 permissioned_dapps: KeyValueStore::new(),
                 permissioned_buyers: KeyValueStore::new(),
-                full_royalty_enforcement,
-                partial_royalty_enforcement,
-                allow_all_buyers: true,
+                allow_all_buyers,
                 royalty_configuration_locked,
             };
 
@@ -391,18 +432,18 @@ mod royal_rascals {
         //
 
         pub fn set_royalty_level_to_full(&mut self) {
-            self.royalty_config.full_royalty_enforcement = true;
-            self.royalty_config.partial_royalty_enforcement = false;
+            self.rascal_manager
+                .set_metadata("royalty_level", "Full".to_owned())
         }
 
         pub fn set_royalty_level_to_partial(&mut self) {
-            self.royalty_config.full_royalty_enforcement = false;
-            self.royalty_config.partial_royalty_enforcement = true;
+            self.rascal_manager
+                .set_metadata("royalty_level", "Partial".to_owned())
         }
 
         pub fn set_royalty_level_to_none(&mut self) {
-            self.royalty_config.full_royalty_enforcement = false;
-            self.royalty_config.partial_royalty_enforcement = false;
+            self.rascal_manager
+                .set_metadata("royalty_level", "None".to_owned())
         }
 
         pub fn change_royalty_percentage_fee(&mut self, new_royalty_percent: Decimal) {
