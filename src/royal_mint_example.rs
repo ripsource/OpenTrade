@@ -135,15 +135,15 @@ mod royal_rascals {
             allow_all_buyers: bool,
 
             // This is relevant for transfers of an NFT to a component/Dapp - not for trading the NFTs.
-            permissioned_dapps: Vec<ComponentAddress>,
+            permissioned_dapps_input: Vec<ComponentAddress>,
 
             // Only applicable if allow_all_buyers is set to false
-            permissioned_buyers: Vec<ComponentAddress>,
+            permissioned_buyers_input: Vec<ComponentAddress>,
 
             // only applicable if you want to restrict the currencies that can be used to pay royalties and/or you have allow_all_buyers is set to false
             restricted_currency_setting: bool,
-            restricted_currencies: Vec<ResourceAddress>,
-            minimum_royalty_amounts: HashMap<ResourceAddress, Decimal>,
+            restricted_currencies_input: Vec<ResourceAddress>,
+            minimum_royalty_amounts_input: HashMap<ResourceAddress, Decimal>,
 
             // (reccommend setting to false and later locking the configuration if desired)
             royalty_configuration_locked: bool,
@@ -167,32 +167,63 @@ mod royal_rascals {
                 panic!("Cannot have both full and partial royalty enforcement");
             }
 
+            let permissioned_dapps: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
+            let permissioned_buyers: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
+            let restricted_currencies: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
+            let minimum_royalty_amounts: KeyValueStore<ResourceAddress, Decimal> =
+                KeyValueStore::new();
+
             if full_royalty_enforcement {
                 royalty_level = "Full".to_string();
+
+                // If full royalty enforcement is set, then we process the advanced settings
+
+                for component_address in permissioned_dapps_input {
+                    permissioned_dapps.insert(component_address, ());
+                }
+
+                if !allow_all_buyers {
+                    for component_address in permissioned_buyers_input {
+                        permissioned_buyers.insert(component_address, ());
+                    }
+                }
+
+                if restricted_currency_setting {
+                    for currency in restricted_currencies_input {
+                        restricted_currencies.insert(currency, ());
+                    }
+                    for (currency, amount) in minimum_royalty_amounts_input {
+                        minimum_royalty_amounts.insert(currency, amount);
+                    }
+                }
             } else if partial_royalty_enforcement {
                 royalty_level = "Partial".to_string();
             } else {
                 royalty_level = "None".to_string();
             }
 
+            // create the royalty config
             let royalty_config = RoyaltyConfig {
                 royalty_percent,
                 maximum_royalty_percent,
-                restricted_currency_setting: false,
-                restricted_currencies: KeyValueStore::new(),
-                minimum_royalty_amounts: KeyValueStore::new(),
-                permissioned_dapps: KeyValueStore::new(),
-                permissioned_buyers: KeyValueStore::new(),
+                restricted_currency_setting,
+                restricted_currencies,
+                minimum_royalty_amounts,
+                permissioned_dapps,
+                permissioned_buyers,
                 allow_all_buyers,
                 royalty_configuration_locked,
             };
 
+            // create the unique badge for the creator of the collection
             let rascal_creator_admin = ResourceBuilder::new_fungible(OwnerRole::None)
                 .divisibility(0)
                 .mint_initial_supply(1);
 
+            // create the rules for the creator of the collection
             let creator_admin_rule = rule!(require(rascal_creator_admin.resource_address()));
 
+            // create the rules for the global caller badge
             let global_caller_badge_rule = rule!(require(global_caller(royalty_component_address)));
 
             // This is the key rule that allows trader accounts to trade royalty NFTs.
@@ -212,8 +243,10 @@ mod royal_rascals {
                         burner => creator_admin_rule.clone();
                         burner_updater => creator_admin_rule.clone();
                     })
+                    //**** REQUIRED FOR ROYALTY COMPATABILITY */
                     // This rule creates the restriction that stops the NFTs from being traded without a royalty payment.
                     // Only the royalty component can bypass this rule and trader accounts can bypass this rule.
+                    // If a creator wishes to leave the system completey - they can update the rules via methods on this component.
                     .deposit_roles(deposit_roles! {
                         depositor => depositer_admin_rule.clone();
                         depositor_updater => depositer_admin_rule;
@@ -230,12 +263,13 @@ mod royal_rascals {
                             metadata_setter_updater => creator_admin_rule;
                         },
                         init {
+                            "name" => "Royal Rascals".to_owned(), updatable;
+                            //**** REQUIRED FOR ROYALTY COMPATABILITY */
                             // We include the royalty component address in the NFTs top-level metadata.
                             // This is important as it means we don't need to programmatically find royalty components on the dApp.
                             // Instead we can dynamically find the component on the NFTs Resource metadata.
                             // It's important we don't place this component address on the individual NFTs because
                             // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
-                            "name" => "Royal Rascals".to_owned(), updatable;
                             "royalty_component" => royalty_component_address, updatable;
                             "royalty_level" => royalty_level.to_owned(), updatable;
 

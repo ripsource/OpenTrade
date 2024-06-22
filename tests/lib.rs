@@ -70,8 +70,7 @@ fn test_hello() {
     );
     println!("fetched virt badge address");
     receipt.expect_commit_success();
-    let depositer_badge: ResourceAddress =
-        receipt.expect_commit(true).output(1);
+    let depositer_badge: ResourceAddress = receipt.expect_commit(true).output(1);
 
     let virt_badge: ResourceAddress = receipt.expect_commit(true).output(1);
 
@@ -91,13 +90,10 @@ fn test_hello() {
     );
     println!("created open trader account");
 
-    let (trader_key, _): (NonFungibleGlobalId, Bucket) =
-        receipt.expect_commit(true).output(1);
+    let (trader_key, _): (NonFungibleGlobalId, Bucket) = receipt.expect_commit(true).output(1);
 
-    let (trader_key_resource, trader_key_local): (
-        ResourceAddress,
-        NonFungibleLocalId,
-    ) = trader_key.clone().into_parts();
+    let (trader_key_resource, trader_key_local): (ResourceAddress, NonFungibleLocalId) =
+        trader_key.clone().into_parts();
 
     println!(
         "nfgid: {:?}, resource: {:?}, local: {:?}",
@@ -106,8 +102,7 @@ fn test_hello() {
 
     receipt.expect_commit_success();
 
-    let trader_component =
-        receipt.expect_commit(true).new_component_addresses()[0];
+    let trader_component = receipt.expect_commit(true).new_component_addresses()[0];
 
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
@@ -148,8 +143,7 @@ fn test_hello() {
     receipt.expect_commit_success();
     println!("created generic marketplace component");
 
-    let marketplace_component =
-        receipt.expect_commit(true).new_component_addresses()[0];
+    let marketplace_component = receipt.expect_commit(true).new_component_addresses()[0];
 
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
@@ -165,8 +159,12 @@ fn test_hello() {
     );
     println!("got marketplace key address");
 
-    let marketplace_key: ResourceAddress =
-        receipt.expect_commit(true).output(1);
+    let marketplace_key: ResourceAddress = receipt.expect_commit(true).output(1);
+
+    let dapp_permissions: Vec<ComponentAddress> = vec![];
+    let buyer_permissions: Vec<ComponentAddress> = vec![];
+    let currencies: Vec<ResourceAddress> = vec![];
+    let minimum_amounts: HashMap<ResourceAddress, Decimal> = hashmap!();
 
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
@@ -178,12 +176,18 @@ fn test_hello() {
                 dec!(100),
                 XRD,
                 1000u64,
+                depositer_badge,
                 dec!(0.05),
                 dec!(0.1),
                 false,
                 true,
+                true,
+                dapp_permissions,
+                buyer_permissions,
                 false,
-                depositer_badge,
+                currencies,
+                minimum_amounts,
+                false,
             ),
         )
         .call_method(
@@ -199,8 +203,7 @@ fn test_hello() {
     println!("created royal rascals component");
     receipt.expect_commit_success();
 
-    let rascal_component =
-        receipt.expect_commit(true).new_component_addresses()[0];
+    let rascal_component = receipt.expect_commit(true).new_component_addresses()[0];
     println!("got here");
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
@@ -238,12 +241,8 @@ fn test_hello() {
     );
 
     let rascal_address: ResourceAddress = receipt.expect_commit(true).output(1);
-    let rascal_local_id: NonFungibleLocalId =
-        NonFungibleLocalId::integer(0u64.into());
-    let nfgid = NonFungibleGlobalId::new(
-        rascal_address.clone(),
-        rascal_local_id.clone(),
-    );
+    let rascal_local_id: NonFungibleLocalId = NonFungibleLocalId::integer(0u64.into());
+    let nfgid = NonFungibleGlobalId::new(rascal_address.clone(), rascal_local_id.clone());
 
     receipt.expect_commit_success();
     println!("got rascal address");
@@ -258,10 +257,8 @@ fn test_hello() {
         vec![NonFungibleGlobalId::from_public_key(&public_key)],
     );
 
-    let (trader_auth_resource, trader_auth_local): (
-        ResourceAddress,
-        NonFungibleLocalId,
-    ) = receipt.expect_commit(true).output(1);
+    let (trader_auth_resource, trader_auth_local): (ResourceAddress, NonFungibleLocalId) =
+        receipt.expect_commit(true).output(1);
 
     receipt.expect_commit_success();
     println!(
@@ -274,10 +271,7 @@ fn test_hello() {
         .call_method(
             account,
             "create_proof_of_non_fungibles",
-            manifest_args!(
-                trader_key_resource,
-                indexset![trader_key_local.clone()]
-            ),
+            manifest_args!(trader_key_resource, indexset![trader_key_local.clone()]),
         )
         .pop_from_auth_zone("proof1")
         .call_method(
@@ -362,10 +356,7 @@ fn test_hello() {
         .call_method(
             account,
             "create_proof_of_non_fungibles",
-            manifest_args!(
-                trader_key_resource,
-                indexset![trader_key_local.clone()]
-            ),
+            manifest_args!(trader_key_resource, indexset![trader_key_local.clone()]),
         )
         .pop_from_auth_zone("proof1")
         .call_method(
