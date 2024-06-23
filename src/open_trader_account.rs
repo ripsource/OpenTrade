@@ -35,11 +35,29 @@ pub struct Listing {
 #[blueprint]
 mod opentrader {
 
+    enable_method_auth! {
+    roles {
+        admin => updatable_by: [];
+    },
+    methods {
+        list => restrict_to: [admin];
+        royal_list => restrict_to: [admin];
+        same_owner_royal_account_transfer => restrict_to: [admin];
+        transfer_royal_nft_to_component => restrict_to: [admin];
+        revoke_market_permission => restrict_to: [admin];
+        add_buyer_permission => restrict_to: [admin];
+        change_price => restrict_to: [admin];
+        cancel_market_listing => restrict_to: [admin];
+        purchase_royal_listing => PUBLIC;
+        purchase_listing => PUBLIC;
+        deposit_royalty_nft => PUBLIC;
+        fetch_auth_key => PUBLIC;
+    }
+    }
+
     struct OpenTrader {
         /// The key value store of listings information for NFTs the user has listed for sale.
         listings: KeyValueStore<NonFungibleGlobalId, Listing>,
-        /// The key value store of listings information for Royalty NFTs the user has listed for sale.
-        royal_listings: KeyValueStore<NonFungibleGlobalId, Listing>,
         /// The key value store of vaults that store all the NFTs that the user has listed for sale.
         nft_vaults: KeyValueStore<NonFungibleGlobalId, Vault>,
         /// The key value store of vaults that store all the revenue the user has made from sales.
@@ -78,7 +96,7 @@ mod opentrader {
                 Runtime::allocate_component_address(OpenTrader::blueprint_id());
             // let global_caller_badge_rule = rule!(require(global_caller(trader_component_address)));
 
-            let (auth_key_resource, auth_key_local) = auth_key.into_parts();
+            let (auth_key_resource, auth_key_local) = auth_key.clone().into_parts();
 
             let virtual_badge_local = virtual_badge.as_non_fungible().non_fungible_local_id();
 
@@ -86,7 +104,6 @@ mod opentrader {
                 auth_key_local,
                 auth_key_resource,
                 listings: KeyValueStore::new(),
-                royal_listings: KeyValueStore::new(),
                 // account_locker,
                 my_account,
                 virtual_badge: Vault::with_bucket(virtual_badge),
@@ -98,6 +115,9 @@ mod opentrader {
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
+            .roles(roles!(
+                admin => rule!(require(auth_key));
+            ))
             .with_address(trader_address_reservation)
             .globalize()
         }
@@ -121,10 +141,10 @@ mod opentrader {
             // marketplaces or private buyers can buy an NFT.
             permissions: Vec<ResourceAddress>,
             // The badge that is used to authenticate the user listing the NFT
-            trader_badge: Proof,
+            // trader_badge: Proof,
         ) {
             // authenticate user
-            self.check_creator(trader_badge);
+            // self.check_creator(trader_badge);
 
             assert!(
                 price > Decimal::zero(),
@@ -161,7 +181,7 @@ mod opentrader {
             // add the listing information. We don't need to worry about
             // duplicating as a listing key entry is always removed when and NFT is sold
             // or if the listing is cancelled.
-            self.royal_listings.insert(nfgid.clone(), new_listing);
+            self.listings.insert(nfgid.clone(), new_listing);
 
             // As this is a royalty enforced listing, we need to use the royalty admin badge
             // to authenticate the deposit of the NFT.
@@ -203,11 +223,11 @@ mod opentrader {
             // We are just using a resource address as validation here - however this could be a more complex check in the future for local ids
             // so that for private deals a brand new resource doesn't need to be created.
 
-            {
-                let trading_permission = permission.resource_address();
+            let trading_permission = permission.resource_address();
 
+            {
                 let listing_permission = self
-                    .royal_listings
+                    .listings
                     .get(&nfgid)
                     .expect("[purchase] Listing not found");
 
@@ -237,7 +257,7 @@ mod opentrader {
             // We retrieve basic information about the listing, such as price, currency and time of the listing.
             {
                 let listing = self
-                    .royal_listings
+                    .listings
                     .get_mut(&nfgid)
                     .expect("[purchase] Listing not found");
 
@@ -293,10 +313,13 @@ mod opentrader {
                     ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
                 ));
 
-                // We send the full payment to the nft so that it can take its %fee
+                // We send the full payment to the royalty component so that it can take its %fee.
+                // We also provide the trading permission to check against any other permissions the creator has set.
                 let mut remainder_after_royalty: Bucket =
-                    Global::<AnyComponent>::from(call_address)
-                        .call_raw("pay_royalty", scrypto_args!(nft_address, payment));
+                    Global::<AnyComponent>::from(call_address).call_raw(
+                        "pay_royalty",
+                        scrypto_args!(nft_address, payment, trading_permission),
+                    );
 
                 // we then take the marketplaces fee (we've already calculated this earlier based on the full payment amount).
                 let marketplace_revenue = remainder_after_royalty.take_advanced(
@@ -327,14 +350,14 @@ mod opentrader {
                     account_recipient.try_deposit_or_abort(nft.into(), None);
                 });
             }
-            self.royal_listings.remove(&nfgid);
+            self.listings.remove(&nfgid);
 
             payment_buckets
         }
 
         /// Using the bottlenose update's ned owner_role assertion, we can ensure that a user can transfer an NFT to another account that they own
         /// without need to pay a royalty or fee.
-        pub fn same_owner_account_transfer(
+        pub fn same_owner_royal_account_transfer(
             &mut self,
             royalty_nft: Bucket,
             mut recipient: Global<Account>,
@@ -355,14 +378,14 @@ mod opentrader {
         }
 
         /// Transfers an NFT to a component. This method is used to transfer an NFT to a component that is not an account.
-        /// This can only work if the Royalty NFT has selected the royalty enforcement level to be: Partial or if Full, the creator
-        /// must have permissioned the dapp in their royalty component.
+        /// This can only work if the Royalty NFT's configuration allows the dapp to receive the NFT. The NFT creator
+        /// must have permissioned the dapp in their royalty component if they've chosen to turn on dapp limits.
         /// Allowing transfers to components opens a lot of possibilities for the user to create new and interesting use cases
         /// however it also allows loopholes for avoiding royalties. The creator of a collection should be aware of this.
         /// We effectively turn off the restrictions for deposits, do some foreign method, then turn them back on so a
         /// dapp can do what they need to with the asset.
         /// We provide an optional return of a vector of buckets, which should cover most use cases.
-        pub fn transfer_nft_to_component(
+        pub fn transfer_royal_nft_to_component(
             &mut self,
             royalty_nft: Bucket,
             // the component of the dapp you want to transfer the NFT to
@@ -393,14 +416,8 @@ mod opentrader {
                 "Component can not be an account component"
             );
 
-            // Each Royalty NFT has a set level of royalty enforcement - full or partial. So we first get this information
-            // as well as the royalty component address.
+            // Each Royalty NFT has its royalty component addres in its top-level resource metadata
             let royalty_nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
-
-            let royalty_level: String = royalty_nft_manager
-                .get_metadata("royalty_level")
-                .unwrap()
-                .unwrap();
 
             let royalty_component_global_address: GlobalAddress = royalty_nft_manager
                 .get_metadata("royalty_component")
@@ -414,47 +431,15 @@ mod opentrader {
                 ObjectStubHandle::Global(GlobalAddress::from(royalty_component)),
             ));
 
-            // if full enforcement is set then we need to send the asset to the royalty component first so that
-            // we can check if the dapp has permission to receive the asset as set by the NFT creator.
-            if royalty_level == "Full" {
-                let existing_access_rule = rule!(
-                    require_amount(1, self.royal_admin.resource_address())
-                        || require(global_caller(royalty_component))
+            // We don't need to authorise anything here as deposits will be authorised from the royalty component.
+
+            let returned_buckets_full: Option<Vec<Bucket>> =
+                Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
+                    "transfer_to_component",
+                    scrypto_args!(royalty_nft, custom_method.clone()),
                 );
 
-                let nft_manager = ResourceManager::from_address(royalty_nft.resource_address());
-
-                nft_manager.set_depositable(rule!(allow_all));
-
-                let returned_buckets_full: Option<Vec<Bucket>> =
-                    Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
-                        "transfer_to_component",
-                        scrypto_args!(royalty_nft, custom_method.clone()),
-                    );
-
-                nft_manager.set_depositable(existing_access_rule);
-
-                if returned_buckets_full.is_some() {
-                    optional_return.extend(returned_buckets_full.unwrap());
-                }
-
-                // otherwise, we just send the nft onto the method that was input.
-            } else if royalty_level == "Partial" {
-                self.royal_admin.as_fungible().authorize_with_amount(1, || {
-                    let returned_buckets: Option<Vec<Bucket>> =
-                        Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
-                            "transfer_to_component",
-                            scrypto_args!(royalty_nft, custom_method.clone()),
-                        );
-
-                    if returned_buckets.is_some() {
-                        optional_return.extend(returned_buckets.unwrap());
-                    }
-                });
-            }
-
-            // return any optional buckets that were returned from the dapp
-            Some(optional_return)
+            returned_buckets_full
         }
 
         // When a dapp wants to send an NFT back to the user - they can use this method to deposit it back to the user.
@@ -477,10 +462,7 @@ mod opentrader {
             currency: ResourceAddress,
             price: Decimal,
             permissions: Vec<ResourceAddress>,
-            trader_badge: Proof,
         ) {
-            self.check_creator(trader_badge);
-
             assert!(!nft_bucket.is_empty(), "[list_nft] No NFT provided");
 
             assert!(
@@ -518,20 +500,7 @@ mod opentrader {
             &mut self,
             nft_id: NonFungibleGlobalId,
             permission_id: ResourceAddress,
-            trader_badge: Proof,
         ) {
-            let trader_badge_checked =
-                trader_badge.check_with_message(self.auth_key_resource, "Incorrect Badge Resource");
-
-            let local_id = trader_badge_checked
-                .as_non_fungible()
-                .non_fungible_local_id();
-
-            assert!(
-                self.auth_key_local == local_id,
-                "Creator key does not match"
-            );
-
             let mut listing = self
                 .listings
                 .get_mut(&nft_id)
@@ -542,14 +511,11 @@ mod opentrader {
                 .retain(|permissions| permissions != &permission_id);
         }
 
-        pub fn add_market_permission(
+        pub fn add_buyer_permission(
             &mut self,
             nft_id: NonFungibleGlobalId,
             permission_id: ResourceAddress,
-            trader_badge: Proof,
         ) {
-            self.check_creator(trader_badge);
-
             let mut listing = self
                 .listings
                 .get_mut(&nft_id)
@@ -566,23 +532,7 @@ mod opentrader {
             listing.price = new_price;
         }
 
-        pub fn cancel_market_listing(
-            &mut self,
-            nft_id: NonFungibleGlobalId,
-            trader_badge: Proof,
-        ) -> Vec<Bucket> {
-            let trader_badge_checked =
-                trader_badge.check_with_message(self.auth_key_resource, "Incorrect Badge Resource");
-
-            let local_id = trader_badge_checked
-                .as_non_fungible()
-                .non_fungible_local_id();
-
-            assert!(
-                self.auth_key_local == local_id,
-                "Creator key does not match"
-            );
-
+        pub fn cancel_market_listing(&mut self, nft_id: NonFungibleGlobalId) -> Vec<Bucket> {
             let mut nft_bucket: Vec<Bucket> = vec![];
 
             {
@@ -599,7 +549,7 @@ mod opentrader {
             nft_bucket
         }
 
-        pub fn purchase_market_listing(
+        pub fn purchase_listing(
             &mut self,
             nfgid: NonFungibleGlobalId,
             payment: FungibleBucket,
@@ -660,22 +610,6 @@ mod opentrader {
         }
 
         // utility methods
-
-        pub fn check_creator(&self, trader_badge: Proof) {
-            let trader_badge_checked =
-                trader_badge.check_with_message(self.auth_key_resource, "Incorrect Badge Resource");
-
-            // let trader_badge_checked = trader_badge.check(self.auth_key_resource);
-
-            let local_id = trader_badge_checked
-                .as_non_fungible()
-                .non_fungible_local_id();
-
-            assert!(
-                self.auth_key_local == local_id,
-                "Creator key does not match"
-            );
-        }
 
         pub fn fetch_auth_key(&self) -> (ResourceAddress, NonFungibleLocalId) {
             (self.auth_key_resource, self.auth_key_local.clone())

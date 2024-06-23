@@ -273,7 +273,7 @@ fn test_hello() {
             "create_proof_of_non_fungibles",
             manifest_args!(trader_key_resource, indexset![trader_key_local.clone()]),
         )
-        .pop_from_auth_zone("proof1")
+        // .pop_from_auth_zone("proof1")
         .call_method(
             account,
             "withdraw_non_fungibles",
@@ -289,7 +289,7 @@ fn test_hello() {
                     dec!(100),
                     XRD,
                     vec![marketplace_key.clone()],
-                    lookup.proof("proof1"),
+                    // lookup.proof("proof1"),
                 ),
             )
         })
@@ -358,7 +358,7 @@ fn test_hello() {
             "create_proof_of_non_fungibles",
             manifest_args!(trader_key_resource, indexset![trader_key_local.clone()]),
         )
-        .pop_from_auth_zone("proof1")
+        // .pop_from_auth_zone("proof1")
         .call_method(
             account,
             "withdraw_non_fungibles",
@@ -374,7 +374,7 @@ fn test_hello() {
                     dec!(100),
                     XRD,
                     vec![marketplace_key.clone()],
-                    lookup.proof("proof1"),
+                    // lookup.proof("proof1"),
                 ),
             )
         })

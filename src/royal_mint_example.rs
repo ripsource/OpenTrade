@@ -11,23 +11,6 @@ use scrypto::prelude::*;
 // component and just add in the deposit rules and resource top-level metadata required for the royalty system. In fact, some interesting
 // opportunites are available for creators to design reactive traits/features based on the trading activity and interaction of components with their NFTs.
 
-/// About Royalties
-/// *** There are three royalty enforcement levels - They are set on resource metadata directly and not stored in the RoyaltyConfig struct. *** ///
-///
-/// Full Royalty Enforcement: Only permissioned dApps and marketplaces can interact with the NFT. You also have advanced options for restricting
-/// currencies used, restricting private trades of your NFTs by requiring a minimum amount of a currency is paid or block them completely.
-/// This is the most secure setting and is recommended for creators who want to ensure royalties are always paid.
-///
-///
-/// Partial Royalty Enforcement: Any dApp can interact with the NFTs and traders can privately trade your NFTs. This is a good setting for creators who
-/// want to allow lots of interoperability and trading of their NFTs. However, it's important to note that this setting could allow traders to bypass royalties in certain
-/// circumstances. Creators should monitor their royalties and their NFTs to ensure they are being traded correctly and if they see a problematic trend, could then
-/// heighten their royalty enforcement.
-///
-/// No Royalty Enforcement: This setting makes NFTs work like any others - anyone can trade them, use them in any dApp, etc. However, if you've set up your NFTs with this
-/// royalty config, you could still change the settings later to enforce royalties. It's a good setting for creators who want to allow their NFTs to be used in a wide range
-/// of dApps and by a wide range of traders and have an alternative revenue model to royalties, but may still want to access some of the dynamic features of the royalty system later.
-///
 ///
 /// The royalty config struct holds all the settings a creator can modify in relation to royalties on their NFTs.
 /// There are tonnes of options and fine tuning you can do - in general, I would expect set-up platforms to offer some pre-made config options.
@@ -40,25 +23,28 @@ struct RoyaltyConfig {
     /// The maximum royalty percentage that can be set - once set can not be increased. It can be decreased though.
     maximum_royalty_percent: Decimal,
     /// Offers an option for a creator to only allow trading of their assets in certain currencies (currencies selected in the permitted_currencies field)
-    restricted_currency_setting: bool,
-    /// [Only applicable if restricted_currency_setting is turned on] Currencies that the creator can receive royalties in/an NFT can be traded in (e.g. XRD)
+    limit_currencies: bool,
+    /// Currencies that the creator can receive royalties in/an NFT can be traded in (e.g. XRD)
     permitted_currencies: KeyValueStore<ResourceAddress, ()>,
-    /// [Only applicable if restricted_currency_setting is turned on] Set minimum fixed amounts of royalties for each permitted currency
+    /// Set minimum fixed amounts of royalties for each permitted currency
     /// this is useful if a creator wants to allow private sales, but still ensure they receive royalties.
+    minimum_royalties: bool,
+    /// Minimum royalty amounts for each currency
     minimum_royalty_amounts: KeyValueStore<ResourceAddress, Decimal>,
-    /// [Only applicable if royalty-enforcement set to FULL] Permissioned dApps - Dapps that you want to allow your NFTs to interact with/be deposited to.
+    // Permissioned dApps - Dapps that you want to allow your NFTs to interact with/be deposited to.
+    limit_dapps: bool,
+    /// A permission list of components an NFT can be transferred to
     permissioned_dapps: KeyValueStore<ComponentAddress, ()>,
-    /// [Only applicable if royalty-enforcement set to FULL] A permission list for marketplaces/buyers that can trade the NFTs
-    /// This requires that a certain badge is shown by the buyer or marketplace in order to purchase an NFT.
-    permissioned_buyers: KeyValueStore<ComponentAddress, ()>,
-    /// [Only applicable if royalty-enforcement set to FULL] By default full enforcement only allows permissioned buyers (such as marketplaces)
-    /// to trade the NFTs. This is useful because private traders could trade the NFTs without paying royalties, so this closes that loophole.
+    /// This is useful because private traders could trade the NFTs without paying royalties, so this closes that loophole.
     /// However, this can be turned off if the creator wants to allow any trader to trade the NFTs. If a creator wants to allow private sales,
     /// but still receive royalties - they can set a minimum royalty amount for each currency.
-    allow_all_buyers: bool,
+    limit_buyers: bool,
+    /// A permission list for marketplaces/individual buyers that can trade the NFTs
+    /// This requires that a certain badge is shown by the buyer or marketplace in order to purchase an NFT.
+    permissioned_buyers: KeyValueStore<ResourceAddress, ()>,
     /// lock royalty configuration: Option can give traders confidence that the royalty percentage/settings will not change.
-    /// There's no method to undo this once set to true. However, permissioned buyers and dapps can still be updated - these can only be locked
-    /// if partial_roylaty enforcement is set.
+    /// There's no method to undo this once set to true. However, right now creators can always take steps to make their
+    /// royalties more relaxed even if locked - i.e. remove mininimum royalties, allow all buyers, etc.
     royalty_configuration_locked: bool,
 }
 
@@ -120,28 +106,21 @@ mod royal_rascals {
             // royalty settings input
             royalty_percent: Decimal,
             maximum_royalty_percent: Decimal,
-
-            // Full enforcement requires a number of sub-advanced settings to be set
-            full_royalty_enforcement: bool,
-            // While Radix NFTs are relatively nascient - this setting may be preffable and the easiest to setup for a creator
-            // Any dApp and any buyer can trade the NFTs, its only if loopholes are exploited that the creator may want to lock down the settings.
-            // In any case, it's unlikley to be on a concerning scale for a creator.
-            partial_royalty_enforcement: bool,
-
-            //-----  Only applicable if full royalty enforcement is set to true -----//
+            minimum_royalties: bool,
 
             // Can be used to allow private sales, but not allow any loopholes.
             // If set, you should set permissioned buyers and consider setting minimum royalty amounts/setting restricted currencies.
-            allow_all_buyers: bool,
+            limit_buyers: bool,
+            limit_currencies: bool,
+            limit_dapps: bool,
 
             // This is relevant for transfers of an NFT to a component/Dapp - not for trading the NFTs.
             permissioned_dapps_input: Vec<ComponentAddress>,
 
             // Only applicable if allow_all_buyers is set to false
-            permissioned_buyers_input: Vec<ComponentAddress>,
+            permissioned_buyers_input: Vec<ResourceAddress>,
 
             // only applicable if you want to restrict the currencies that can be used to pay royalties and/or you have allow_all_buyers is set to false
-            restricted_currency_setting: bool,
             restricted_currencies_input: Vec<ResourceAddress>,
             minimum_royalty_amounts_input: HashMap<ResourceAddress, Decimal>,
 
@@ -161,57 +140,45 @@ mod royal_rascals {
                 "Royalty percent must be less than maximum royalty"
             );
 
-            let royalty_level: String;
-
-            if full_royalty_enforcement && partial_royalty_enforcement {
-                panic!("Cannot have both full and partial royalty enforcement");
-            }
-
             let permissioned_dapps: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
-            let permissioned_buyers: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
+            let permissioned_buyers: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
             let permitted_currencies: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
             let minimum_royalty_amounts: KeyValueStore<ResourceAddress, Decimal> =
                 KeyValueStore::new();
 
-            if full_royalty_enforcement {
-                royalty_level = "Full".to_string();
-
-                // If full royalty enforcement is set, then we process the advanced settings
-
+            if limit_dapps {
                 for component_address in permissioned_dapps_input {
                     permissioned_dapps.insert(component_address, ());
                 }
+            }
 
-                if !allow_all_buyers {
-                    for component_address in permissioned_buyers_input {
-                        permissioned_buyers.insert(component_address, ());
-                    }
+            if !limit_buyers {
+                for resource_address in permissioned_buyers_input {
+                    permissioned_buyers.insert(resource_address, ());
                 }
+            }
 
-                if restricted_currency_setting {
-                    for currency in restricted_currencies_input {
-                        permitted_currencies.insert(currency, ());
-                    }
-                    for (currency, amount) in minimum_royalty_amounts_input {
-                        minimum_royalty_amounts.insert(currency, amount);
-                    }
+            if limit_currencies {
+                for currency in restricted_currencies_input {
+                    permitted_currencies.insert(currency, ());
                 }
-            } else if partial_royalty_enforcement {
-                royalty_level = "Partial".to_string();
-            } else {
-                royalty_level = "None".to_string();
+                for (currency, amount) in minimum_royalty_amounts_input {
+                    minimum_royalty_amounts.insert(currency, amount);
+                }
             }
 
             // create the royalty config
             let royalty_config = RoyaltyConfig {
                 royalty_percent,
                 maximum_royalty_percent,
-                restricted_currency_setting,
+                limit_currencies,
                 permitted_currencies,
                 minimum_royalty_amounts,
                 permissioned_dapps,
                 permissioned_buyers,
-                allow_all_buyers,
+                minimum_royalties,
+                limit_buyers,
+                limit_dapps,
                 royalty_configuration_locked,
             };
 
@@ -271,7 +238,6 @@ mod royal_rascals {
                             // It's important we don't place this component address on the individual NFTs because
                             // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
                             "royalty_component" => royalty_component_address, updatable;
-                            "royalty_level" => royalty_level.to_owned(), updatable;
 
                         }
                     })
@@ -377,24 +343,45 @@ mod royal_rascals {
         // It takes the payment and an option for an account to send the NFT to.
         // It uses the royalty percentage set by the creator to determine how much of the payment to take.
         // We use a keyvaluestore of vaults so that we can store multiple currencies.
-        // We take the NFT as an argument so that we can determine at this point whether we want to enforce full royalties
+        // We take the NFT as an argument so that we can determine at this point whether we want to enforce advanced royalties settings
         // where only an account component can own the NFT - in which case we just sent the NFT directly to the input account.
         // Otherwise, we send the NFT back to the trading account component, where a it could be sent on to another component.
         pub fn pay_royalty(
             &mut self,
             nft: ResourceAddress,
             mut payment: Bucket,
-            // mut account: Global<Account>,
+            buyer: ResourceAddress,
         ) -> Bucket {
             let payment_amount = payment.amount();
 
-            // check the correct proof has been passed
+            // check the correct NFT for this royalty component has been passed
             assert!(
                 nft == self.rascal_manager.address(),
                 "[pay_royalty] Incorrect resource passed"
             );
 
+            if self.royalty_config.limit_buyers {
+                assert!(
+                    self.royalty_config
+                        .permissioned_buyers
+                        .get(&buyer)
+                        .is_some(),
+                    "This buyer is not permissioned to trade this NFT"
+                );
+            }
+
             let currency = payment.resource_address();
+            let limit_currencies = self.royalty_config.limit_currencies;
+
+            if limit_currencies {
+                assert!(
+                    self.royalty_config
+                        .permitted_currencies
+                        .get(&currency)
+                        .is_some(),
+                    "This currency is not permitted for royalties"
+                );
+            }
 
             // send the royalty to the royalty vault
 
@@ -408,6 +395,21 @@ mod royal_rascals {
                         .unwrap(),
                     WithdrawStrategy::Rounded(RoundingMode::ToZero),
                 );
+
+                if limit_currencies {
+                    if self.royalty_config.minimum_royalties {
+                        let minimum_royalty = self
+                            .royalty_config
+                            .minimum_royalty_amounts
+                            .get(&currency)
+                            .unwrap();
+                        assert!(
+                            royalty.amount() >= minimum_royalty.clone(),
+                            "Royalty amount is below the minimum required"
+                        );
+                    }
+                }
+
                 self.royalty_vaults
                     .insert(currency.clone(), Vault::with_bucket(royalty));
             } else {
@@ -418,6 +420,20 @@ mod royal_rascals {
                         .unwrap(),
                     WithdrawStrategy::Rounded(RoundingMode::ToZero),
                 );
+
+                if limit_currencies {
+                    if self.royalty_config.minimum_royalties {
+                        let minimum_royalty = self
+                            .royalty_config
+                            .minimum_royalty_amounts
+                            .get(&currency)
+                            .unwrap();
+                        assert!(
+                            royalty.amount() >= minimum_royalty.clone(),
+                            "Royalty amount is below the minimum required"
+                        );
+                    }
+                }
                 self.royalty_vaults.get_mut(&currency).unwrap().put(royalty);
             }
 
@@ -425,8 +441,8 @@ mod royal_rascals {
             payment
         }
 
-        /// Possibility to transfer the royalty NFT to a dApp if permissions are set for Full royalty enforcement - requires the dApp to be permissioned - transfer occurs here.
-        /// If the metadata on the resource is set to 'partial' enforcement then any dApp can interact with the NFT - the transfer occurs directly from the trading account component.
+        /// Possibility to transfer the royalty NFT to a dApp if permissions are set for advanced royalty enforcement - requires the dApp to be permissioned - transfer occurs here.
+        /// If the royalty config allows it, then any dApp can interact with the NFT.
         /// We allow an optional return of a vector of buckets which should cover most use cases for dApps.
         ///
         /// As long as the code remains relatively similar - developers can use this method to have some reactive logic for when their NFTs interact with certain dApps.
@@ -436,10 +452,12 @@ mod royal_rascals {
             dapp: ComponentAddress,
             custom_method: String,
         ) -> Option<Vec<Bucket>> {
-            assert!(
-                self.royalty_config.permissioned_dapps.get(&dapp).is_some(),
-                "This dApp has not been permissioned by the collection creator"
-            );
+            if self.royalty_config.limit_dapps {
+                assert!(
+                    self.royalty_config.permissioned_dapps.get(&dapp).is_some(),
+                    "This dApp has not been permissioned by the collection creator"
+                );
+            }
 
             let call_address: Global<AnyComponent> = Global(ObjectStub::new(
                 ObjectStubHandle::Global(GlobalAddress::from(dapp)),
@@ -464,40 +482,6 @@ mod royal_rascals {
         //
         // These set of methods offer the ability for the creator modify their royalty settings.
         //
-
-        /// Only possible if the royalty configuration is not locked
-        pub fn set_royalty_level_to_full(&mut self) {
-            assert!(
-                !self.royalty_config.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
-            self.rascal_manager
-                .set_metadata("royalty_level", "Full".to_owned())
-        }
-
-        /// Only possible if the royalty configuration is not locked - However, if
-        /// the royalty level is set to full, then it can be moved down to partial.
-        /// You can always move down a level of enforcement, but you can't move up when locked.
-        pub fn set_royalty_level_to_partial(&mut self) {
-            let royalty_level: String = self
-                .rascal_manager
-                .get_metadata("royalty_level")
-                .unwrap()
-                .unwrap();
-            assert!(
-                royalty_level == "None" && !self.royalty_config.royalty_configuration_locked,
-                "Royalty configuration is locked"
-            );
-
-            self.rascal_manager
-                .set_metadata("royalty_level", "Partial".to_owned())
-        }
-
-        /// You can always set royalty level to none - even if the configuration is locked.
-        pub fn set_royalty_level_to_none(&mut self) {
-            self.rascal_manager
-                .set_metadata("royalty_level", "None".to_owned())
-        }
 
         /// Only possible if the royalty configuration is not locked
         /// New percentage fee must be below the maximum set.
@@ -532,18 +516,18 @@ mod royal_rascals {
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
             );
-            self.royalty_config.restricted_currency_setting = true;
+            self.royalty_config.limit_currencies = true;
         }
 
         pub fn restrict_currencies_false(&mut self) {
-            self.royalty_config.restricted_currency_setting = false;
+            self.royalty_config.limit_currencies = false;
         }
 
         // You can only add restricted currencies if the restricted currency setting is turned on.
         // You can add even if the configuration is locked.
         pub fn add_permitted_currency(&mut self, currency: ResourceAddress) {
             assert!(
-                self.royalty_config.restricted_currency_setting,
+                self.royalty_config.limit_currencies,
                 "Restricted currency setting is not turned on"
             );
             self.royalty_config
@@ -555,7 +539,7 @@ mod royal_rascals {
         // You can't remove currencies if the configuration is locked.
         pub fn remove_permitted_currency(&mut self, currency: ResourceAddress) {
             assert!(
-                self.royalty_config.restricted_currency_setting,
+                self.royalty_config.limit_currencies,
                 "Restricted currency setting is not turned on"
             );
             assert!(
@@ -573,7 +557,7 @@ mod royal_rascals {
             minimum_royalty_amount: Decimal,
         ) {
             assert!(
-                self.royalty_config.restricted_currency_setting,
+                self.royalty_config.limit_currencies,
                 "Restricted currency setting is not turned on"
             );
             assert!(
@@ -589,7 +573,7 @@ mod royal_rascals {
         // You can remove even if the configuration is locked.
         pub fn remove_minimum_royalty_amount(&mut self, currency: ResourceAddress) {
             assert!(
-                self.royalty_config.restricted_currency_setting,
+                self.royalty_config.limit_currencies,
                 "Restricted currency setting is not turned on"
             );
             self.royalty_config
@@ -597,7 +581,7 @@ mod royal_rascals {
                 .remove(&currency);
         }
 
-        // Permissioned dapps settings only work with FULL royalty enforcement.
+        // Permissioned dapps settings only work with advanced royalty enforcement settings.
         // You can add even if the configuration is locked.
         pub fn add_permissioned_dapp(&mut self, dapp: ComponentAddress) {
             self.royalty_config.permissioned_dapps.insert(dapp, ());
@@ -612,14 +596,14 @@ mod royal_rascals {
             self.royalty_config.permissioned_dapps.remove(&dapp);
         }
 
-        // Permissioned buyers settings only work with FULL royalty enforcement.
+        // Permissioned buyers settings only work with advanced royalty enforcement settings.
         // You can always add more permissioned buyers even if the configuration is locked.
-        pub fn add_permissioned_buyer(&mut self, buyer: ComponentAddress) {
+        pub fn add_permissioned_buyer(&mut self, buyer: ResourceAddress) {
             self.royalty_config.permissioned_buyers.insert(buyer, ());
         }
 
         // You can't remove buyers if the configuration is locked.
-        pub fn remove_permissioned_buyer(&mut self, buyer: ComponentAddress) {
+        pub fn remove_permissioned_buyer(&mut self, buyer: ResourceAddress) {
             assert!(
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
@@ -633,12 +617,12 @@ mod royal_rascals {
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
             );
-            self.royalty_config.allow_all_buyers = false;
+            self.royalty_config.limit_buyers = false;
         }
 
         // You can allow all buyers even if the configuration is locked
         pub fn allow_all_buyers(&mut self) {
-            self.royalty_config.allow_all_buyers = true;
+            self.royalty_config.limit_buyers = true;
         }
 
         pub fn lock_royalty_configuration(&mut self) {
