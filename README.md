@@ -21,8 +21,7 @@ The design hopes to boast the following features:
     - List once, list everywhere
     - Change prices without re-listing
     - Make offers with the same tokens on multiple NFTs at the same time
-    - Discount all your prices at once for a flash sale
-    - Track your sales history across marketplaces and private deals
+    - Easily track your sales history across marketplaces and private deals
     - Use your NFTs even when they are listed (proof creation)
 - Private trades between users supported
 - Trove style swaps of multiple assets supported
@@ -35,9 +34,12 @@ The design hopes to boast the following features:
 - %fee Royalties are supported for newly minted collections
 - Use a standard template to mint collections that are fully integrated with the trading system
 - BYOB - Bring your own blueprint, integration to your collection requires only a few lines of Scrypto
-- Add advanced reactive functionality to your NFTs, such as traits updating when your NFTs are bought or if they interact with certain dApps
-- Configure royalty enforcement level at any time:
-    - allow only users to hold your NFTs + select specific dApps that can hold/interact with your NFTs (High royalty enforcement)
+- Add advanced reactive functionality to your NFTs:
+    - Have NFTs metadata react to being listed or sold
+    - Trigger things when NFTs are sold for certain prices
+    - Make NFTs reactive to their interactions with dApps (e.g. metadata that counts how many times they've been loaned, used in a game, etc.)
+- Create unqiue royalty configurations:
+    - allow only accounts to hold your NFTs + select specific dApps that can hold/interact with your NFTs (High royalty enforcement)
     - allow users and any dApps to hold your NFTs (Medium royalty enforcement)
     - remove all royalty restrictions (no royalty enforcement)
     - Switch between royalty restriction levels at any time
