@@ -21,8 +21,7 @@ The design hopes to boast the following features:
     - List once, list everywhere
     - Change prices without re-listing
     - Make offers with the same tokens on multiple NFTs at the same time
-    - Discount all your prices at once for a flash sale
-    - Track your sales history across marketplaces and private deals
+    - Easily track your sales history across marketplaces and private deals
     - Use your NFTs even when they are listed (proof creation)
 - Private trades between users supported
 - Trove style swaps of multiple assets supported
@@ -31,13 +30,17 @@ The design hopes to boast the following features:
 ## For NFT Creators
 - Any existing collection or new collection no matter how it is minted is compatible with this system
 - It is completely free to set up and manage
-- There is 0 lockin. Something better comes along? No problem, no fee.
+- There is 0 lock in. Something better comes along? No problem, no fee.
+- Equally, if OpenTrade gets better/adds new features - creators can upgrade to them easily too
 - %fee Royalties are supported for newly minted collections
 - Use a standard template to mint collections that are fully integrated with the trading system
 - BYOB - Bring your own blueprint, integration to your collection requires only a few lines of Scrypto
-- Add advanced reactive functionality to your NFTs, such as traits updating when your NFTs are bought or if they interact with certain dApps
-- Configure royalty enforcement level at any time:
-    - allow only users to hold your NFTs + select specific dApps that can hold/interact with your NFTs (High royalty enforcement)
+- Add advanced reactive functionality to your NFTs:
+    - Have NFTs metadata react to being listed or sold
+    - Trigger things when NFTs are sold for certain prices
+    - Make NFTs reactive to their interactions with dApps (e.g. metadata that counts how many times they've been loaned, used in a game, etc.)
+- Create unqiue royalty configurations:
+    - allow only accounts to hold your NFTs + select specific dApps that can hold/interact with your NFTs (High royalty enforcement)
     - allow users and any dApps to hold your NFTs (Medium royalty enforcement)
     - remove all royalty restrictions (no royalty enforcement)
     - Switch between royalty restriction levels at any time
@@ -65,7 +68,7 @@ The Open Trade system instead gives authority via a badge to every single tradin
 
 When a user wants to list a Royalty NFT to their trading account, they simply withdraw it and their account authorising depositing it into their trading account. When a user/marketplace purchases the NFT, they use the purchase_royal_listing method which checks the metadata of the NFT for a royalty component and sends the full payment to the royalty component for processing before allowing the trading account to then deposit the NFT in the buyers account. This pattern allows for a high level of configurability of how NFT royalties are collected as well as opening the possibility for dynamic reactive methods based on trading/transferring of an NFT. 
 
-Royalty systems often have to make comprimises between the level of enforcement and interoperability/usability (i.e. can people transfer the NFT between their own accounts for no charge? or is that a way to bypass royalties?). The Open Trader standard closed many common loopholes while also allowing creators to customise their royalties for the right balance of enforcement and freedom. The standard offers three levels of royalty enforcement: None, Partial and Full. :: Add description of what each level does.
+Royalty systems often have to make comprimises between the level of enforcement and interoperability/usability (i.e. can people transfer the NFT between their own accounts for no charge? or is that a way to bypass royalties?). The Open Trader standard closed many common loopholes while also allowing creators to customise their royalties for the right balance of enforcement and freedom. The implementation offers a range of options that can be enabled to create a very strict level of royalty enforcement, or certain areas can be relaxed depending on what a creator wants.
 
 ## Common royalty loopholes and solutions
 
