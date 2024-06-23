@@ -156,7 +156,7 @@ mod royal_rascals {
                 }
             }
 
-            if !limit_buyers {
+            if limit_buyers {
                 for resource_address in permissioned_buyers_input {
                     permissioned_buyers.insert(resource_address, ());
                 }
