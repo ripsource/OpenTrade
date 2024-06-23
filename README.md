@@ -28,6 +28,8 @@ The design hopes to boast the following features:
 - 0 fees for private trades and Trove style swaps
 
 ## For NFT Creators
+![alt text](https://github.com/ripsource/OpenTrade/blob/main/img/OpenCreator.png?raw=true)
+
 - Any existing collection or new collection no matter how it is minted is compatible with this system
 - It is completely free to set up and manage
 - There is 0 lock in. Something better comes along? No problem, no fee.
