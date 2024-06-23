@@ -1,7 +1,8 @@
 ![alt text](https://github.com/ripsource/OpenTrade/blob/main/img/opentrade.png?raw=true)
 
 
-# In Live Development - Proof of Concept - not production ready, nor complete in any fashion.
+# Free and Open Source NFT Creator, Trader, Marketplace Protocol
+## In Live Development ##
 
 This set of blueprints sets out the infrastructure for decentralised NFT trading on Radix, where 1 NFT can be listed on multiple marketplaces at the same time. The intention is to allow for users to have control over their assets, while ensuring marketplace aggregators can earn fees for their services and creators can enforce royalties in a highly configurable way. 
 
