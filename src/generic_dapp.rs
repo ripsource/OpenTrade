@@ -17,10 +17,7 @@ mod generic_dapp {
             .globalize()
         }
 
-        pub fn deposit_royalty_nft(
-            &mut self,
-            royalty_nft: Bucket,
-        ) -> Option<Vec<Bucket>> {
+        pub fn deposit_royalty_nft(&mut self, royalty_nft: Bucket) -> Option<Vec<Bucket>> {
             // insert the NFT into you dapp where needed
             // this method will be authorised to deposit the NFT into a vault within the component
             // so you can perform any logic you want here.
@@ -38,6 +35,7 @@ mod generic_dapp {
             // Or do nothing depending on the dApp (i.e. nft loans, gaming dApp, etc.)
 
             // option to return a vector of buckets (containing user badges, tokens, etc.) if required.
+            // Some(vec![bucket1, bucket2, bucket3]), etc.
             None
         }
     }

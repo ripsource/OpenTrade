@@ -2,13 +2,13 @@ use scrypto::prelude::*;
 
 /// This blueprint is a trader account - where they can list items and where items are purchased from. Each method calls the event emitter component.
 /// A trader account has two sets of methods for listing and purchases - one for royalty enforced NFTs and one for standard NFTs.
-/// The trader account stores a virtual badge that is used to authenticate event emitters from each trader account and allows traders to buy and sell Royalty NFTs
+/// The trader account stores a emitter badge that is used to authenticate event emitters from each trader account and allows traders to buy and sell Royalty NFTs
 /// by providing authentication to the deposit rules on an Royalty NFT.
 ///
 ///
 /// Currently AccountLockers are not used - however the ambition would be to add them so that a user does not have to claim their revenue manually.
 
-#[derive(ScryptoSbor)]
+#[derive(ScryptoSbor, Clone)]
 pub struct Listing {
     /// The permissions that a secondary seller must have to sell an NFT. This is used to ensure that only selected
     /// marketplaces or private buyers can buy an NFT.
@@ -22,7 +22,7 @@ pub struct Listing {
     nfgid: NonFungibleGlobalId,
     ///
     /// Because you can construct transactions atomically on Radix - you could technically list a Royalty NFT for 0 XRD,
-    // Then in the same transaction, purchase the NFT to another account. This would be a way to send an NFT to another user without paying a royalty
+    // then in the same transaction, purchase the NFT to another account. This would be a way to send an NFT to another user without paying a royalty
     // potentially.
 
     // To combat this we can store a time on a listing of the exact second a listing was made. We then block users from purchasing
@@ -34,6 +34,7 @@ pub struct Listing {
 
 #[blueprint]
 mod opentrader {
+    use crate::open_trade_event::event;
 
     enable_method_auth! {
     roles {
@@ -42,7 +43,7 @@ mod opentrader {
     methods {
         list => restrict_to: [admin];
         royal_list => restrict_to: [admin];
-        same_owner_royal_account_transfer => restrict_to: [admin];
+        same_owner_royal_transfer => restrict_to: [admin];
         transfer_royal_nft_to_component => restrict_to: [admin];
         revoke_market_permission => restrict_to: [admin];
         add_buyer_permission => restrict_to: [admin];
@@ -67,11 +68,13 @@ mod opentrader {
         /// The royal admin badge that is used to authenticate deposits of Royalty NFTs.
         /// A user should never be able to withdraw this badge or access it in a unintended manner.
         royal_admin: Vault,
-        /// The virtual badge that is used to authenticate event emitters from each trader account.
+        /// The emitter badge that is used to authenticate event emitters from each trader account.
         /// A user should never be able to withdraw this badge or access it in a unintended manner.
-        virtual_badge: Vault,
-        /// The local id of the virtual badge that is used to authenticate event emitters from each trader account.
-        virtual_badge_local: NonFungibleLocalId,
+        emitter_badge: Vault,
+        /// The local id of the emitter badge that is used to authenticate event emitters from each trader account.
+        emitter_badge_local: NonFungibleLocalId,
+        /// the central event emitter component that is used to emit events for all trades.
+        event_manager: Global<event::Event>,
         /// The trading account badge resource address. This badge is held by the user and is used to authenticate methods on their trading account.
         auth_key_resource: ResourceAddress,
         /// The trading account badge local id. This badge is held by the user and is used to authenticate methods on their trading account.
@@ -89,8 +92,9 @@ mod opentrader {
         pub fn create_trader(
             auth_key: NonFungibleGlobalId,
             my_account: Global<Account>,
-            virtual_badge: Bucket,
+            emitter_badge: Bucket,
             depositer_admin: Bucket,
+            event_manager: Global<event::Event>,
         ) -> Global<OpenTrader> {
             let (trader_address_reservation, trader_component_address) =
                 Runtime::allocate_component_address(OpenTrader::blueprint_id());
@@ -98,7 +102,7 @@ mod opentrader {
 
             let (auth_key_resource, auth_key_local) = auth_key.clone().into_parts();
 
-            let virtual_badge_local = virtual_badge.as_non_fungible().non_fungible_local_id();
+            let emitter_badge_local = emitter_badge.as_non_fungible().non_fungible_local_id();
 
             Self {
                 auth_key_local,
@@ -106,8 +110,9 @@ mod opentrader {
                 listings: KeyValueStore::new(),
                 // account_locker,
                 my_account,
-                virtual_badge: Vault::with_bucket(virtual_badge),
-                virtual_badge_local,
+                emitter_badge: Vault::with_bucket(emitter_badge),
+                emitter_badge_local,
+                event_manager,
                 trader_account_component_address: trader_component_address,
                 nft_vaults: KeyValueStore::new(),
                 sales_revenue: KeyValueStore::new(),
@@ -181,7 +186,7 @@ mod opentrader {
             // add the listing information. We don't need to worry about
             // duplicating as a listing key entry is always removed when and NFT is sold
             // or if the listing is cancelled.
-            self.listings.insert(nfgid.clone(), new_listing);
+            self.listings.insert(nfgid.clone(), new_listing.clone());
 
             // As this is a royalty enforced listing, we need to use the royalty admin badge
             // to authenticate the deposit of the NFT.
@@ -200,7 +205,15 @@ mod opentrader {
                     self.nft_vaults
                         .insert(nfgid.clone(), Vault::with_bucket(nft_to_list));
                 }
-            })
+            });
+
+            // finally we emit a listing event via the event emitter component
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+            self.event_manager
+                .listing_event(new_listing, nfgid.clone(), emitter_proof.into());
         }
 
         /// The intention is that in the majority of cases, a marketplace would call this method using their
@@ -218,6 +231,7 @@ mod opentrader {
             mut account_recipient: Global<Account>,
         ) -> Vec<Bucket> {
             let mut payment_buckets = vec![];
+            let listing_event: Listing;
 
             // First authenticate the proof to check that the marketplace or private buyer has the correct permissions to purchase the NFT
             // We are just using a resource address as validation here - however this could be a more complex check in the future for local ids
@@ -260,6 +274,8 @@ mod opentrader {
                     .listings
                     .get_mut(&nfgid)
                     .expect("[purchase] Listing not found");
+
+                listing_event = listing.clone();
 
                 let price = listing.price;
 
@@ -352,12 +368,21 @@ mod opentrader {
             }
             self.listings.remove(&nfgid);
 
+            // finally we emit a listing event via the event emitter component
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            self.event_manager
+                .purchase_listing_event(listing_event, nfgid, emitter_proof.into());
+
             payment_buckets
         }
 
         /// Using the bottlenose update's ned owner_role assertion, we can ensure that a user can transfer an NFT to another account that they own
         /// without need to pay a royalty or fee.
-        pub fn same_owner_royal_account_transfer(
+        pub fn same_owner_royal_transfer(
             &mut self,
             royalty_nft: Bucket,
             mut recipient: Global<Account>,
@@ -395,8 +420,6 @@ mod opentrader {
             // optional return vec of buckets for things like badges reciepts, etc. from the dapp
             // should we add the option to be able to send some other asset with the NFT to the dapp?
         ) -> Option<Vec<Bucket>> {
-            let mut optional_return: Vec<Bucket> = vec![];
-
             // we get the package address of the component
             let package_address = component.blueprint_id().package_address;
 
@@ -450,11 +473,9 @@ mod opentrader {
             });
         }
 
-        // Non-Royalty Enforced Methods
-        // I've not implemented these methods fully yet
-        // lots to change up so can be ignored.
-        // Overall - handling non-royalty NFTs is much simpler as there are no royalties to pay - so has not been
-        // a priority to implement yet.
+        //
+        // General royalty/non-royalty related Methods //
+        //
 
         pub fn list(
             &mut self,
@@ -493,7 +514,16 @@ mod opentrader {
             self.nft_vaults
                 .insert(nfgid.clone(), Vault::with_bucket(nft_bucket.into()));
 
-            self.listings.insert(nfgid, new_listing);
+            self.listings.insert(nfgid.clone(), new_listing.clone());
+
+            // finally we emit a listing event via the event emitter component
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            self.event_manager
+                .listing_event(new_listing, nfgid, emitter_proof.into());
         }
 
         pub fn revoke_market_permission(
@@ -509,6 +539,14 @@ mod opentrader {
             listing
                 .secondary_seller_permissions
                 .retain(|permissions| permissions != &permission_id);
+
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            self.event_manager
+                .update_listing_event(listing.clone(), nft_id, emitter_proof.into());
         }
 
         pub fn add_buyer_permission(
@@ -522,6 +560,14 @@ mod opentrader {
                 .expect("[add_permission] Listing not found");
 
             listing.secondary_seller_permissions.push(permission_id);
+
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            self.event_manager
+                .update_listing_event(listing.clone(), nft_id, emitter_proof.into());
         }
 
         pub fn change_price(&mut self, nft_id: NonFungibleGlobalId, new_price: Decimal) {
@@ -530,6 +576,14 @@ mod opentrader {
                 .get_mut(&nft_id)
                 .expect("[change_price] Listing not found");
             listing.price = new_price;
+
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            self.event_manager
+                .update_listing_event(listing.clone(), nft_id, emitter_proof.into());
         }
 
         pub fn cancel_market_listing(&mut self, nft_id: NonFungibleGlobalId) -> Vec<Bucket> {
@@ -542,6 +596,23 @@ mod opentrader {
                     .expect("[cancel] NFT not found");
 
                 nft_bucket.push(nft.take_all());
+            }
+            {
+                let listing = self
+                    .listings
+                    .get(&nft_id)
+                    .expect("[change_price] Listing not found");
+
+                let emitter_proof = self
+                    .emitter_badge
+                    .as_non_fungible()
+                    .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+                self.event_manager.cancel_listing_event(
+                    listing.clone(),
+                    nft_id.clone(),
+                    emitter_proof.into(),
+                );
             }
 
             self.listings.remove(&nft_id);
@@ -556,12 +627,15 @@ mod opentrader {
             permission: Proof,
         ) -> Vec<Bucket> {
             let mut nft_bucket: Vec<Bucket> = vec![];
+            let listing_event: Listing;
 
             {
                 let listing = self
                     .listings
                     .get_mut(&nfgid)
                     .expect("[purchase] Listing not found");
+
+                listing_event = listing.clone();
 
                 let price = listing.price;
 
@@ -599,6 +673,18 @@ mod opentrader {
                     .secondary_seller_permissions
                     .contains(&marketplace),
                 "[purchase] Marketplace does not have permission to purchase this listing"
+            );
+
+            // finally we emit a listing event via the event emitter component
+            let emitter_proof = self
+                .emitter_badge
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            self.event_manager.purchase_listing_event(
+                listing_event,
+                nfgid.clone(),
+                emitter_proof.into(),
             );
 
             self.listings.remove(&nfgid);

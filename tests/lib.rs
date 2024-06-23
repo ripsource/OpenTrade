@@ -7,7 +7,7 @@ use trader::open_trader_account::*;
 use trader::royal_mint_example::*;
 
 #[test]
-fn test_hello() {
+fn integrated_test_purchase_royalty_nft() {
     // Setup the environment
     let mut ledger = LedgerSimulatorBuilder::new()
         .without_kernel_trace()
@@ -350,6 +350,7 @@ fn test_hello() {
     receipt.expect_commit_success();
 
     println!("purchased rascal");
+    println!("{:?}", receipt);
 
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
