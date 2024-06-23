@@ -13,8 +13,10 @@ use scrypto::prelude::*;
 
 ///
 /// The royalty config struct holds all the settings a creator can modify in relation to royalties on their NFTs.
-/// There are tonnes of options and fine tuning you can do - in general, I would expect set-up platforms to offer some pre-made config options.
-/// Then an advanced mode for creators to fine-tune their settings.
+/// There are a bunch of options you can enable and fine tuning you can do - in general, I would expect launchpad platforms to offer some pre-made config options.
+/// Then an advanced mode for creators to fine-tune their settings. It's important to note that once you have a basic understanding of the core features,
+/// you can easily extend the functionality and add new features to the royalty system. As long as some basic principles are followed, it will still be
+/// compatible with the rest of the OpenTrade system.
 
 #[derive(ScryptoSbor)]
 struct RoyaltyConfig {
@@ -106,22 +108,24 @@ mod royal_rascals {
             // royalty settings input
             royalty_percent: Decimal,
             maximum_royalty_percent: Decimal,
-            minimum_royalties: bool,
 
-            // Can be used to allow private sales, but not allow any loopholes.
-            // If set, you should set permissioned buyers and consider setting minimum royalty amounts/setting restricted currencies.
+            // These represent some advanced setting that creators can enable to heighten the level of royalty enforcement
+            // and use to create new reactive/dynamic features for their NFTs.
             limit_buyers: bool,
             limit_currencies: bool,
             limit_dapps: bool,
+            minimum_royalties: bool,
 
             // This is relevant for transfers of an NFT to a component/Dapp - not for trading the NFTs.
             permissioned_dapps_input: Vec<ComponentAddress>,
 
-            // Only applicable if allow_all_buyers is set to false
+            // Only applicable if limit buyers is set to true
             permissioned_buyers_input: Vec<ResourceAddress>,
 
-            // only applicable if you want to restrict the currencies that can be used to pay royalties and/or you have allow_all_buyers is set to false
+            // only applicable if you want to restrict the currencies that can be used to pay royalties
             restricted_currencies_input: Vec<ResourceAddress>,
+            // if restricting the currencies you can then also add minimum amounts for how much royalty you should receive.
+            // This is set so that if you require 20 XRD as a minimum, and your %fee is 10% - then atleast a 200 XRD sale would be required.
             minimum_royalty_amounts_input: HashMap<ResourceAddress, Decimal>,
 
             // (reccommend setting to false and later locking the configuration if desired)
