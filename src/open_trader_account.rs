@@ -48,7 +48,8 @@ mod opentrader {
         revoke_market_permission => restrict_to: [admin];
         add_buyer_permission => restrict_to: [admin];
         change_price => restrict_to: [admin];
-        cancel_market_listing => restrict_to: [admin];
+        cancel_listing => restrict_to: [admin];
+        cancel_royal_listing => restrict_to: [admin];
         purchase_royal_listing => PUBLIC;
         purchase_listing => PUBLIC;
         deposit_royalty_nft => PUBLIC;
@@ -380,6 +381,43 @@ mod opentrader {
             payment_buckets
         }
 
+        pub fn cancel_royal_listing(&mut self, nfgid: NonFungibleGlobalId) {
+            let mut nft_bucket: Vec<Bucket> = vec![];
+
+            {
+                let mut nft = self
+                    .nft_vaults
+                    .get_mut(&nfgid)
+                    .expect("[cancel] NFT not found");
+
+                nft_bucket.push(nft.take_all());
+            }
+            {
+                let listing = self
+                    .listings
+                    .get(&nfgid)
+                    .expect("[change_price] Listing not found");
+
+                let emitter_proof = self
+                    .emitter_badge
+                    .as_non_fungible()
+                    .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+                self.event_manager.cancel_listing_event(
+                    listing.clone(),
+                    nfgid.clone(),
+                    emitter_proof.into(),
+                );
+            }
+
+            self.listings.remove(&nfgid);
+
+            self.royal_admin.as_fungible().authorize_with_amount(1, || {
+                self.my_account
+                    .try_deposit_or_abort(nft_bucket.pop().unwrap().into(), None);
+            });
+        }
+
         /// Using the bottlenose update's ned owner_role assertion, we can ensure that a user can transfer an NFT to another account that they own
         /// without need to pay a royalty or fee.
         pub fn same_owner_royal_transfer(
@@ -586,7 +624,7 @@ mod opentrader {
                 .update_listing_event(listing.clone(), nft_id, emitter_proof.into());
         }
 
-        pub fn cancel_market_listing(&mut self, nft_id: NonFungibleGlobalId) -> Vec<Bucket> {
+        pub fn cancel_listing(&mut self, nft_id: NonFungibleGlobalId) -> Vec<Bucket> {
             let mut nft_bucket: Vec<Bucket> = vec![];
 
             {
