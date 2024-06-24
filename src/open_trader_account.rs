@@ -24,7 +24,7 @@ pub struct Listing {
     /// Because you can construct transactions atomically on Radix - you could technically list a Royalty NFT for 0 XRD,
     // then in the same transaction, purchase the NFT to another account. This would be a way to send an NFT to another user without paying a royalty
     // potentially.
-
+    open_trader_account: ComponentAddress,
     // To combat this we can store a time on a listing of the exact second a listing was made. We then block users from purchasing
     // a listing within the same second it was listed. This would prevent the above scenario from happening during normal network usage
     // where transactions are processed in a few seconds. Idealy, we could get more granular than seconds, but this seems like a pragmatic
@@ -181,6 +181,7 @@ mod opentrader {
                 currency,
                 price,
                 nfgid: nfgid.clone(),
+                open_trader_account: self.trader_account_component_address,
                 time_of_listing,
             };
 
@@ -546,6 +547,7 @@ mod opentrader {
                 currency,
                 price,
                 nfgid: nfgid.clone(),
+                open_trader_account: self.trader_account_component_address,
                 time_of_listing,
             };
 

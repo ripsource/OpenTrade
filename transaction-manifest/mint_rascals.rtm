@@ -1,0 +1,30 @@
+CALL_METHOD
+    Address("component_sim1cptxxxxxxxxxfaucetxxxxxxxxx000527798379xxxxxxxxxhkrefh")
+    "lock_fee"
+    Decimal("5000")
+;
+CALL_FUNCTION
+    Address("package_sim1phhyaadjcggz9vs26vp5rl52pvsa0mppqkfkt9ld7rqdndxpzcl9j8")
+    "RoyalRascals"
+    "start_minting_rascals"
+    Decimal("100")
+    Address("resource_sim1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxakj8n3")
+    1000u64
+    Address("resource_sim1t5dqx0jdm9qc9syg6mf4fv5m66styy5smvj34ktlrj0xhdfp2seu89")
+    Decimal("0.05")
+    Decimal("0.1")
+    false
+    false
+    false
+    false
+    Array<Address>()
+    Array<Address>()
+    Array<Address>()
+    Map<Address, Decimal>()
+    false
+;
+CALL_METHOD
+    Address("account_sim1c8m6h4yv2x9ca0wx5ddtl0nctqmjt2t740wfjgj9w8sdz82zf8ppcr")
+    "deposit_batch"
+    Expression("ENTIRE_WORKTOP")
+;

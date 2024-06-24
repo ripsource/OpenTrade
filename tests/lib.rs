@@ -1,6 +1,7 @@
 use scrypto::component::AnyComponent;
 use scrypto_test::prelude::*;
 
+use scrypto_test::utils::dump_manifest_to_file_system;
 use trader::open_trade_event::*;
 use trader::open_trade_factory::*;
 use trader::open_trader_account::*;
@@ -37,6 +38,7 @@ fn integrated_test_purchase_royalty_nft() {
         manifest,
         vec![NonFungibleGlobalId::from_public_key(&public_key)],
     );
+
     println!("created open trade protocol");
     receipt.expect_commit_success();
     let component = receipt.expect_commit(true).new_component_addresses()[0];
