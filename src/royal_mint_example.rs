@@ -235,6 +235,7 @@ mod royal_rascals {
                         },
                         init {
                             "name" => "Royal Rascals".to_owned(), updatable;
+                            "icon_url" => Url::of("https://i.pinimg.com/236x/97/83/5a/97835a9505d29d6f56c0595d20e3ba02.jpg"), updatable;
                             //**** REQUIRED FOR ROYALTY COMPATABILITY */
                             // We include the royalty component address in the NFTs top-level metadata.
                             // This is important as it means we don't need to programmatically find royalty components on the dApp.
@@ -300,7 +301,7 @@ mod royal_rascals {
             let rascal = Rascal {
                 name: "Rascal".to_string(),
                 description: "A mischievous little rascal".to_string(),
-                key_image_url: Url::of("https://rascal.com/placeholder.png"),
+                key_image_url: Url::of("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRHEjgTZ0_EJd49P3NnB2DUtc6SEud0BB3gNA&s"),
                 attributes: vec![],
             };
 

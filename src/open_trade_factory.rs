@@ -1,3 +1,4 @@
+use crate::open_trade_event::event;
 use crate::open_trade_event::event::Event;
 use crate::open_trader_account::opentrader::OpenTrader;
 use scrypto::prelude::*;
@@ -7,11 +8,12 @@ use scrypto::prelude::*;
 // and cancel listings.
 
 #[derive(ScryptoSbor, NonFungibleData)]
-struct TraderKey {}
+struct TraderKey {
+    name: String,
+}
 
 #[blueprint]
 mod openhub {
-    use crate::open_trade_event::event;
 
     struct OpenHub {
         /// The badge that is stored and locked in a trader account to authenticate event emitters
@@ -76,13 +78,15 @@ mod openhub {
             &self,
             my_account: Global<Account>,
         ) -> (NonFungibleGlobalId, Bucket) {
-            let emitter_badge = self
-                .emitter_trader_badge
-                .mint_ruid_non_fungible(TraderKey {});
+            let emitter_badge = self.emitter_trader_badge.mint_ruid_non_fungible(TraderKey {
+                name: "emitter".to_string(),
+            });
 
             let personal_trading_account_badge = self
                 .open_trader_account_badge
-                .mint_ruid_non_fungible(TraderKey {});
+                .mint_ruid_non_fungible(TraderKey {
+                    name: "trader_account".to_string(),
+                });
 
             let nfgid = NonFungibleGlobalId::new(
                 personal_trading_account_badge.resource_address(),

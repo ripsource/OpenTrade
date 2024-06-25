@@ -1,5 +1,6 @@
-use crate::open_trader_account::Listing;
 use scrypto::prelude::*;
+
+use crate::open_trader_account::Listing;
 /// This component acts as the central hub for all trade emitted events, such as listing creation, listing updates, listing cancellations, and listing purchases.
 
 #[derive(ScryptoSbor, ScryptoEvent)]

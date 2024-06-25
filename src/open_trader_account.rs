@@ -1,5 +1,5 @@
+use crate::open_trade_event::event;
 use scrypto::prelude::*;
-
 /// This blueprint is a trader account - where they can list items and where items are purchased from. Each method calls the event emitter component.
 /// A trader account has two sets of methods for listing and purchases - one for royalty enforced NFTs and one for standard NFTs.
 /// The trader account stores a emitter badge that is used to authenticate event emitters from each trader account and allows traders to buy and sell Royalty NFTs
@@ -20,11 +20,13 @@ pub struct Listing {
     /// The NFTGID being recorded is potentially redundant as it is the key of the listing in the listings key value store.
     /// The actual NFT is stored in the key value store of vaults separately.
     nfgid: NonFungibleGlobalId,
+    /// trader's account address - helpful for aggregators to know where to fetch listings from.
+    open_trader_account: ComponentAddress,
     ///
     /// Because you can construct transactions atomically on Radix - you could technically list a Royalty NFT for 0 XRD,
     // then in the same transaction, purchase the NFT to another account. This would be a way to send an NFT to another user without paying a royalty
     // potentially.
-    open_trader_account: ComponentAddress,
+
     // To combat this we can store a time on a listing of the exact second a listing was made. We then block users from purchasing
     // a listing within the same second it was listed. This would prevent the above scenario from happening during normal network usage
     // where transactions are processed in a few seconds. Idealy, we could get more granular than seconds, but this seems like a pragmatic
@@ -32,9 +34,9 @@ pub struct Listing {
     time_of_listing: Instant,
 }
 
+// To Do: register types for the Listing struct and in other blueprints
 #[blueprint]
 mod opentrader {
-    use crate::open_trade_event::event;
 
     enable_method_auth! {
     roles {
@@ -176,12 +178,14 @@ mod opentrader {
 
             let time_of_listing = Clock::current_time_rounded_to_seconds();
 
+            let open_trader_account = self.trader_account_component_address;
+
             let new_listing = Listing {
                 secondary_seller_permissions: permissions,
                 currency,
                 price,
                 nfgid: nfgid.clone(),
-                open_trader_account: self.trader_account_component_address,
+                open_trader_account,
                 time_of_listing,
             };
 
@@ -542,12 +546,14 @@ mod opentrader {
 
             let time_of_listing = Clock::current_time_rounded_to_seconds();
 
+            let open_trader_account = self.trader_account_component_address;
+
             let new_listing = Listing {
                 secondary_seller_permissions: permissions,
                 currency,
                 price,
                 nfgid: nfgid.clone(),
-                open_trader_account: self.trader_account_component_address,
+                open_trader_account,
                 time_of_listing,
             };
 

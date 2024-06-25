@@ -308,6 +308,7 @@ fn integrated_test_purchase_royalty_nft() {
 
     receipt.expect_commit_success();
 
+    println!("{:?}", receipt.expect_commit(true));
     // advance time by atleast a second before a purchase can be made
     ledger.advance_to_round_at_timestamp(Round::of(2), 1718832354484);
     println!(
