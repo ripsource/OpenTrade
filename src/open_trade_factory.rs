@@ -24,16 +24,18 @@ mod openhub {
         royal_nft_depositer_badge: ResourceManager,
         /// Event emitter component
         event_manager: Global<event::Event>,
+        /// Hub Component Address
+        component_address: ComponentAddress,
     }
 
     impl OpenHub {
         /// Instantiation of the open hub component creates the resource managers of all the key badges used in the system
         /// which are minted when a user creates a trading account for themselves.
         pub fn start_open_hub() -> Global<OpenHub> {
-            let (event_address_reservation, event_component_address) =
+            let (address_reservation, component_address) =
                 Runtime::allocate_component_address(OpenHub::blueprint_id());
 
-            let global_caller_badge_rule = rule!(require(global_caller(event_component_address)));
+            let global_caller_badge_rule = rule!(require(global_caller(component_address)));
 
             let emitter_trader_badge =
                 ResourceBuilder::new_ruid_non_fungible::<TraderKey>(OwnerRole::None)
@@ -66,10 +68,25 @@ mod openhub {
                 open_trader_account_badge,
                 royal_nft_depositer_badge,
                 event_manager,
+                component_address,
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
-            .with_address(event_address_reservation)
+            .metadata(metadata! (
+                roles {
+                    metadata_setter => rule!(deny_all);
+                    metadata_setter_updater => rule!(deny_all);
+                    metadata_locker => rule!(deny_all);
+                    metadata_locker_updater => rule!(deny_all);
+                },
+                init {
+                    "name" => "OpenTrade".to_owned(), locked;
+                    "description" => "OpenTrade Hub".to_owned(), locked;
+                    "dapp_definition" => component_address, locked;
+                    "icon_url" => Url::of("https://radixopentrade.netlify.app/img/OT_logo_black.webp"), locked;
+                }
+            ))
+            .with_address(address_reservation)
             .globalize()
         }
 
@@ -104,6 +121,7 @@ mod openhub {
                 emitter_badge,
                 depositer_permission_badge,
                 self.event_manager,
+                self.component_address,
             );
 
             // return the personal trading account badge (and the nfgid of the account for testing purposes)

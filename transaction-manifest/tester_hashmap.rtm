@@ -1,0 +1,26 @@
+CALL_METHOD
+    Address("component_tdx_2_1cptxxxxxxxxxfaucetxxxxxxxxx000527798379xxxxxxxxxyulkzl")
+    "lock_fee"
+    Decimal("5000")
+;
+CALL_METHOD
+    Address("component_tdx_2_1cp0enntpraa4ene8ekhcx4nwyq23u3z2403hyj5c42zh89rs2e5edp")
+    "add_minting_data"
+    Array<Tuple>(
+        Tuple(
+            NonFungibleLocalId("#1#"),
+            Array<Map>(
+                Map<String, String>(
+                    "trait_display" => "text",
+                    "trait_type" => "Hair",
+                    "trait_value" => "Brown"
+                )
+            )
+        )
+    )
+;
+CALL_METHOD
+    Address("account_tdx_2_1c8m6h4yv2x9ca0wx5ddtl0nctqmjt2t740wfjgj9w8sdz82zyrnjm9")
+    "deposit_batch"
+    Expression("ENTIRE_WORKTOP")
+;

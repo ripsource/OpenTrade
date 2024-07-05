@@ -12,26 +12,16 @@ use scrypto::prelude::*;
 pub struct Listing {
     /// The permissions that a secondary seller must have to sell an NFT. This is used to ensure that only selected
     /// marketplaces or private buyers can buy an NFT.
-    secondary_seller_permissions: Vec<ResourceAddress>,
+    pub secondary_seller_permissions: Vec<ResourceAddress>,
     /// The seller is able to decide what currency they want to sell their NFT in (e.g. XRD, FLOOP, EARLY, HUG)
-    currency: ResourceAddress,
+    pub currency: ResourceAddress,
     /// The price of the NFT - this price will be subject to marketplace fees and creator royalties which are taken as a % of this amount.
-    price: Decimal,
+    pub price: Decimal,
     /// The NFTGID being recorded is potentially redundant as it is the key of the listing in the listings key value store.
     /// The actual NFT is stored in the key value store of vaults separately.
-    nfgid: NonFungibleGlobalId,
+    pub nfgid: NonFungibleGlobalId,
     /// trader's account address - helpful for aggregators to know where to fetch listings from.
-    open_trader_account: ComponentAddress,
-    ///
-    /// Because you can construct transactions atomically on Radix - you could technically list a Royalty NFT for 0 XRD,
-    // then in the same transaction, purchase the NFT to another account. This would be a way to send an NFT to another user without paying a royalty
-    // potentially.
-
-    // To combat this we can store a time on a listing of the exact second a listing was made. We then block users from purchasing
-    // a listing within the same second it was listed. This would prevent the above scenario from happening during normal network usage
-    // where transactions are processed in a few seconds. Idealy, we could get more granular than seconds, but this seems like a pragmatic
-    // solution for now.
-    time_of_listing: Instant,
+    pub open_trader_account: ComponentAddress,
 }
 
 // To Do: register types for the Listing struct and in other blueprints
@@ -87,6 +77,8 @@ mod opentrader {
         my_account: Global<Account>,
         /// This users trading account component address
         trader_account_component_address: ComponentAddress,
+        /// This kvs tracks the royal listing transactions made on the account, preventing double method calls for royalty NFTs.
+        transactions: KeyValueStore<Hash, ()>,
     }
 
     impl OpenTrader {
@@ -98,6 +90,7 @@ mod opentrader {
             emitter_badge: Bucket,
             depositer_admin: Bucket,
             event_manager: Global<event::Event>,
+            dapp_global: ComponentAddress,
         ) -> Global<OpenTrader> {
             let (trader_address_reservation, trader_component_address) =
                 Runtime::allocate_component_address(OpenTrader::blueprint_id());
@@ -120,9 +113,24 @@ mod opentrader {
                 nft_vaults: KeyValueStore::new(),
                 sales_revenue: KeyValueStore::new(),
                 royal_admin: Vault::with_bucket(depositer_admin),
+                transactions: KeyValueStore::new(),
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
+            .metadata(metadata! (
+                roles {
+                    metadata_setter => rule!(deny_all);
+                    metadata_setter_updater => rule!(deny_all);
+                    metadata_locker => rule!(deny_all);
+                    metadata_locker_updater => rule!(deny_all);
+                },
+                init {
+                    "name" => "OT Account".to_owned(), locked;
+                    "description" => "An OpenTrade Account".to_owned(), locked;
+                    "dapp_definition" => dapp_global, locked;
+                    "icon_url" => Url::of("https://radixopentrade.netlify.app/img/OT_logo_black.webp"), locked;
+                }
+            ))
             .roles(roles!(
                 admin => rule!(require(auth_key));
             ))
@@ -172,11 +180,13 @@ mod opentrader {
 
             let nfgid = NonFungibleGlobalId::new(nft_address, id.clone());
 
-            // We take the time of the listing as seconds to prevent a user from listing and selling an NFT in the same second - i.e.
+            // We take the hash of the listing as to prevent a user from listing and selling an NFT in the same tx - i.e.
             // calling the list method and purchase method within the same transaction which could be used to send an NFT to another user for free
             // without any risk of someone sniping it.
 
-            let time_of_listing = Clock::current_time_rounded_to_seconds();
+            let transaction_hash = Runtime::transaction_hash();
+
+            self.transactions.insert(transaction_hash, ());
 
             let open_trader_account = self.trader_account_component_address;
 
@@ -186,7 +196,6 @@ mod opentrader {
                 price,
                 nfgid: nfgid.clone(),
                 open_trader_account,
-                time_of_listing,
             };
 
             // add the listing information. We don't need to worry about
@@ -235,8 +244,9 @@ mod opentrader {
             permission: Proof,
             // The account that the NFT should be sent to
             mut account_recipient: Global<Account>,
-        ) -> Vec<Bucket> {
-            let mut payment_buckets = vec![];
+        ) -> (Vec<Bucket>, Vec<Bucket>) {
+            // fee payment is tuple 1, receipt is tuple 2
+            let mut tuple_buckets: (Vec<Bucket>, Vec<Bucket>) = (vec![], vec![]);
             let listing_event: Listing;
 
             // First authenticate the proof to check that the marketplace or private buyer has the correct permissions to purchase the NFT
@@ -260,19 +270,24 @@ mod opentrader {
             }
 
             // We get the marketplace fee rate from the metadata of the proof
-            // TO DO for a private sale, we need to wrap this step with a check otherwise it will panic for a private deal.
+            // We calculate the marketplace fee from the payment amount.
+            // This could be an unsafe decimal at this point - however when taking from the payment we use a safe rounding mode.
+            // If not marketplace fee is set, we set the rate to 0.
 
-            let marketplace_fee_rate: Decimal = permission
+            let marketplace_fee_option: Option<Decimal> = permission
                 .skip_checking()
                 .resource_manager()
                 .get_metadata("marketplace_fee")
-                .unwrap()
                 .unwrap();
 
-            // We calculate the marketplace fee from the payment amount.
-            // This could be an unsafe decimal at this point - however when taking from the payment we use a safe rounding mode.
-
-            let marketplace_fee = payment.amount().checked_mul(marketplace_fee_rate).unwrap();
+            let marketplace_fee_rate: Decimal;
+            let marketplace_fee: Decimal;
+            if marketplace_fee_option.is_some() {
+                marketplace_fee_rate = marketplace_fee_option.unwrap();
+                marketplace_fee = payment.amount().checked_mul(marketplace_fee_rate).unwrap();
+            } else {
+                marketplace_fee = dec!(0);
+            };
 
             // We retrieve basic information about the listing, such as price, currency and time of the listing.
             {
@@ -298,16 +313,14 @@ mod opentrader {
                 );
 
                 // As mentioned elsewhere - we want to ensure no one can do an atomic transaction of listing and purchasing a Royalty NFT
-                // as this would provide a loophole for trading NFTs without paying royalties. We do this by checking the time of the listing
-                // and the time of the purchase. If they are the same, we abort the transaction.
-                // Currently this is done to the second - however if there's is a more granular alternative, that would be prefferable.
-                let time_of_listing = listing.time_of_listing;
+                // as this would provide a loophole for trading NFTs without paying royalties. We do this by checking the hash of the listing
+                // and the hash of the purchase. If they are the same, we abort the transaction.
 
-                let time_of_purchase = Clock::current_time_rounded_to_seconds();
+                let transaction_hash = Runtime::transaction_hash();
 
                 assert!(
-                    !time_of_purchase.compare(time_of_listing, TimeComparisonOperator::Eq),
-                    "[purchase] Purchase made within the same second as listing is not allowed."
+                    self.transactions.get(&transaction_hash).is_none(),
+                    "[purchase] Purchasing a listing within the same transaction it is listed is blocked."
                 );
 
                 // We get the NFT from the vault
@@ -320,6 +333,48 @@ mod opentrader {
                 let nft = vault.take_all().as_non_fungible();
 
                 let nft_address = nft.resource_address();
+
+                // we create a receipt for the purchase allowing the user to see in the manifest what they're receiving
+
+                let resource_image: Url = ResourceManager::from_address(nft_address)
+                    .get_metadata("icon_url")
+                    .unwrap()
+                    .unwrap();
+
+                let resource_name: String = ResourceManager::from_address(nft_address)
+                    .get_metadata("name")
+                    .unwrap()
+                    .unwrap();
+
+                let receipt_name = format!(
+                    "{} : {}",
+                    resource_name,
+                    nft.non_fungible_local_id().to_string()
+                );
+
+                let receipt = ResourceBuilder::new_fungible(OwnerRole::None)
+                .burn_roles(burn_roles! {
+                    burner => rule!(allow_all);
+                    burner_updater => rule!(deny_all);
+                })
+                    .metadata(metadata! {
+                        roles {
+                            metadata_locker => rule!(deny_all);
+                            metadata_locker_updater => rule!(deny_all);
+                            metadata_setter => rule!(deny_all);
+                            metadata_setter_updater => rule!(deny_all);
+                        },
+                        init {
+                            "name" => receipt_name.to_owned(), locked;
+                            "icon_url" => resource_image, locked;
+                            "resource_address" => nft_address, locked;
+                            "local_id" => nft.non_fungible_local_id().to_string(), locked;
+                            "receipt" => "This is a display receipt to show the NFT being transferred to your account in this transaction. You will see this NFT in your wallet after the transaction. You can burn this token if you wish to remove the receipt from your wallet.".to_owned(), locked;
+                        }
+                    })
+                    .mint_initial_supply(1);
+
+                tuple_buckets.1.push(receipt.into());
 
                 // We get the royalty component address from the NFT metadata
                 let royalty_component_global_address: GlobalAddress =
@@ -344,12 +399,15 @@ mod opentrader {
                     );
 
                 // we then take the marketplaces fee (we've already calculated this earlier based on the full payment amount).
-                let marketplace_revenue = remainder_after_royalty.take_advanced(
-                    marketplace_fee,
-                    WithdrawStrategy::Rounded(RoundingMode::ToZero),
-                );
 
-                payment_buckets.push(marketplace_revenue);
+                if marketplace_fee_option.is_some() {
+                    let marketplace_revenue = remainder_after_royalty.take_advanced(
+                        marketplace_fee,
+                        WithdrawStrategy::Rounded(RoundingMode::ToZero),
+                    );
+
+                    tuple_buckets.0.push(marketplace_revenue);
+                }
 
                 // Sales revenue for the trader is then stored. In the future it would be good to utilise AccountLockers for better UX.
                 let sales_vault_exists = self.sales_revenue.get(&currency).is_some();
@@ -383,7 +441,7 @@ mod opentrader {
             self.event_manager
                 .purchase_listing_event(listing_event, nfgid, emitter_proof.into());
 
-            payment_buckets
+            tuple_buckets
         }
 
         pub fn cancel_royal_listing(&mut self, nfgid: NonFungibleGlobalId) {
@@ -510,10 +568,50 @@ mod opentrader {
 
         // When a dapp wants to send an NFT back to the user - they can use this method to deposit it back to the user.
 
-        pub fn deposit_royalty_nft(&mut self, nft: Bucket) {
+        pub fn deposit_royalty_nft(&mut self, nft: Bucket) -> Bucket {
+            let resource_image: Url = ResourceManager::from_address(nft.resource_address())
+                .get_metadata("icon_url")
+                .unwrap()
+                .unwrap();
+
+            let resource_name: String = ResourceManager::from_address(nft.resource_address())
+                .get_metadata("name")
+                .unwrap()
+                .unwrap();
+
+            let receipt_name = format!(
+                "{} : {}",
+                resource_name,
+                nft.as_non_fungible().non_fungible_local_id().to_string()
+            );
+
+            let receipt = ResourceBuilder::new_fungible(OwnerRole::None)
+            .burn_roles(burn_roles! {
+                burner => rule!(allow_all);
+                burner_updater => rule!(deny_all);
+            })
+                .metadata(metadata! {
+                    roles {
+                        metadata_locker => rule!(deny_all);
+                        metadata_locker_updater => rule!(deny_all);
+                        metadata_setter => rule!(deny_all);
+                        metadata_setter_updater => rule!(deny_all);
+                    },
+                    init {
+                        "name" => receipt_name.to_owned(), locked;
+                        "icon_url" => resource_image, locked;
+                        "resource_address" => nft.resource_address(), locked;
+                        "local_id" => nft.as_non_fungible().non_fungible_local_id().to_string(), locked;
+                        "receipt" => "This is a display receipt to show the NFT being transferred to your account in this transaction. You will see this NFT in your wallet after the transaction. You can burn this token if you wish to remove the receipt from your wallet.".to_owned(), locked;
+                    }
+                })
+                .mint_initial_supply(1);
+
             self.royal_admin.as_fungible().authorize_with_amount(1, || {
                 self.my_account.try_deposit_or_abort(nft.into(), None);
             });
+
+            receipt.into()
         }
 
         //
@@ -544,8 +642,6 @@ mod opentrader {
                 nft_bucket.as_non_fungible().non_fungible_local_id(),
             );
 
-            let time_of_listing = Clock::current_time_rounded_to_seconds();
-
             let open_trader_account = self.trader_account_component_address;
 
             let new_listing = Listing {
@@ -554,7 +650,6 @@ mod opentrader {
                 price,
                 nfgid: nfgid.clone(),
                 open_trader_account,
-                time_of_listing,
             };
 
             self.nft_vaults

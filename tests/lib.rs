@@ -172,9 +172,13 @@ fn integrated_test_purchase_royalty_nft() {
         .lock_fee_from_faucet()
         .call_function(
             package_address,
-            "RoyalRascals",
-            "start_minting_rascals",
+            "RoyalNFTs",
+            "start_minting_nft",
             manifest_args!(
+                "Baked Potato NFTs".to_string(),
+                "An Baked Potato NFT collection you can trade with royalties".to_string(),
+                "https://www.allrecipes.com/thmb/c_2gXiAwkO6u1UJCY-1eAVCy0h0=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/54679_perfect-baked-potato-Rita-1x1-1-91711252bb3740088c8ea55c5f9bef1c.jpg".to_string(),
+                "https://www.onceuponachef.com/images/2022/11/baked-potatoes.jpg".to_string(),
                 dec!(100),
                 XRD,
                 1000u64,
@@ -206,7 +210,9 @@ fn integrated_test_purchase_royalty_nft() {
     receipt.expect_commit_success();
 
     let rascal_component = receipt.expect_commit(true).new_component_addresses()[0];
+
     println!("got here");
+
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
         .call_method(account, "withdraw", manifest_args!(XRD, dec!(100)))

@@ -73,7 +73,7 @@ mod generic_marketplace {
             payment: FungibleBucket,
             open_sale_address: Global<AnyComponent>,
             account_recipient: Global<Account>,
-        ) {
+        ) -> Vec<Bucket> {
             let nflid = NonFungibleLocalId::integer(1u64.into());
             let proof_creation: Proof = self
                 .marketplace_listing_key_vault
@@ -81,12 +81,13 @@ mod generic_marketplace {
                 .create_proof_of_non_fungibles(&indexset![nflid])
                 .into();
 
-            let mut fee: Vec<Bucket> = open_sale_address.call_raw::<Vec<Bucket>>(
-                "purchase_royal_listing",
-                scrypto_args!(nfgid, payment, proof_creation, account_recipient),
-            );
+            let mut fee_and_receipt: (Vec<Bucket>, Vec<Bucket>) =
+                open_sale_address.call_raw::<(Vec<Bucket>, Vec<Bucket>)>(
+                    "purchase_royal_listing",
+                    scrypto_args!(nfgid, payment, proof_creation, account_recipient),
+                );
 
-            let fee_returned = fee.pop().unwrap();
+            let fee_returned = fee_and_receipt.0.pop().unwrap();
 
             let fee_resource = fee_returned.resource_address();
 
@@ -101,6 +102,8 @@ mod generic_marketplace {
                 let fee_vault = Vault::with_bucket(fee_returned);
                 self.fee_vaults.insert(fee_resource, fee_vault);
             }
+
+            fee_and_receipt.1
         }
 
         pub fn get_marketplace_key_address(&self) -> ResourceAddress {

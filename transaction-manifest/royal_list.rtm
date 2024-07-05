@@ -4,37 +4,37 @@ CALL_METHOD
     Decimal("5000")
 ;
 CALL_METHOD
-    Address("account_sim1c8m6h4yv2x9ca0wx5ddtl0nctqmjt2t740wfjgj9w8sdz82zf8ppcr")
+    Address("account_tdx_2_129f3avaxc24z6ycnf4n07ehljd7a83xrdpuxs40tkdk84lveh0st9k")
     "create_proof_of_non_fungibles"
-    Address("resource_sim1nfvfza0ljmme7ztlw6uw76jdwy9tdtc8l46ls9tfntwzj63v6dx96m")
+    Address("resource_tdx_2_1ng23l9j2aqhl5x2qc6mpa0ax8unk4md6kylx8fkpsalg88xts0lgf0")
     Array<NonFungibleLocalId>(
-        NonFungibleLocalId("{224c8e8fd62b1882-4559510413021d97-1b557dc53780136b-587bcc473f4bcef7}")
+        NonFungibleLocalId("{643c5b492307a2ba-c7255f07d1be4b77-e34209b584ca1fa8-af1ca145c4eb9057}")
     )
 ;
 CALL_METHOD
-    Address("account_sim1c8m6h4yv2x9ca0wx5ddtl0nctqmjt2t740wfjgj9w8sdz82zf8ppcr")
+    Address("account_tdx_2_129f3avaxc24z6ycnf4n07ehljd7a83xrdpuxs40tkdk84lveh0st9k")
     "withdraw_non_fungibles"
-    Address("resource_sim1nt0vkzmx08svzqqyy6c3dzq7jmh38uem3egvfr0ytfeyquh7cc97g4")
+    Address("resource_tdx_2_1ntu0fmr2458kjx9ym45fs6fcudpx3q9nv7wusfzsnrv63edggcqhc6")
     Array<NonFungibleLocalId>(
         NonFungibleLocalId("#0#")
     )
 ;
 TAKE_ALL_FROM_WORKTOP
-    Address("resource_sim1nt0vkzmx08svzqqyy6c3dzq7jmh38uem3egvfr0ytfeyquh7cc97g4")
+    Address("resource_tdx_2_1ntu0fmr2458kjx9ym45fs6fcudpx3q9nv7wusfzsnrv63edggcqhc6")
     Bucket("rascal")
 ;
 CALL_METHOD
-    Address("component_sim1cr0m7mhdzam7w2za2l2sgnneaxjf46a45fkrsuqeut6xhyjrzpw790")
+    Address("component_tdx_2_1czgqglqh37y85eqsuynlks7ykqcp8229w0wyfxqcwffgjc85jqwt92")
     "royal_list"
     Bucket("rascal")
     Decimal("100")
-    Address("resource_sim1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxakj8n3")
+    Address("resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc")
     Array<Address>(
-        Address("resource_sim1ntf7g55c7dtdhkdwspuc5ccgee2fs8l4cg8u2775cnphmtc0cxwy88")
+        Address("resource_tdx_2_1ntyh7pruput2j4aq7qz64nhlwn8fckt5n3elu5nyaqcgyg2elyznxp")
     )
 ;
 CALL_METHOD
-    Address("account_sim1c8m6h4yv2x9ca0wx5ddtl0nctqmjt2t740wfjgj9w8sdz82zf8ppcr")
+    Address("account_tdx_2_129f3avaxc24z6ycnf4n07ehljd7a83xrdpuxs40tkdk84lveh0st9k")
     "deposit_batch"
     Expression("ENTIRE_WORKTOP")
 ;
