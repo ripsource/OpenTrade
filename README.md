@@ -81,7 +81,7 @@ _Solution:_ Users can create a trusted permission list of dApps that their NFTs 
 ### Atomic fee skipping
 Due to the atomic guarantees and composable manifests on Radix, its possible that a user could list a Royalty NFT for sale and then purchase it to send to another user all within the same transaction. This would allow a user to do a private deal where they list the NFT for 0 XRD, but don't risk anyone 'sniping' it because they also purchase it to another account at the same time. 
 
-_Solution_: Logic set in trading accounts prevents a Royalty NFT being bought and purchased within the same second.
+_Solution_: Similar to the FAUCET blueprint, we store a hash of the listing tx at runtime and check against this when a purchase method is called. Thank you to Yo for suggesting this. 
 
 
 
