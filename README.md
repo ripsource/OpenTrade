@@ -83,7 +83,12 @@ Due to the atomic guarantees and composable manifests on Radix, its possible tha
 
 _Solution_: Similar to the FAUCET blueprint, we store a hash of the listing tx at runtime and check against this when a purchase method is called. Thank you to Yo for suggesting this. 
 
+## Future areas for development and improvement
 
+- As Royalty-Enforced NFTs are deposit restricted, we have to make direct deposit calls from within Scrypto methods. Currently, the Radix wallet only support 1-layer of transaction information in the GUI manifests and therefore, royalty NFTs don't show up as being depoisted to the user's account. Once we have Allowances, we should be able to update this - however, in the meantime, a temporary solution is to mint a receipt that gives the appearance of the NFT being purchased so that the user can visually verify the NFT that's being deposited to them.
+- Currently the basic minting and royalty component example blueprint is quite cumbersome because of its 'feature richness', there is likely some more standardised types of minting examples that could be created for project developers to easily modify what they want - rather than having to grapple with all the details at once.
+- Currently there is no support for multi-listings of the royalty NFTs. While mult-listing of royalty NFTs from the same collection seems straight forward - A decision would need to be made as to whether NFTs from different collections could be listed together and enjoy their respective royalties for the full payment amount.
+- While you can create a listing in any currency, it would be possible to add features that allow a listing in multiple currencies/respective amounts. i.e. You can have a base price in XRD, then a discounted price if paying with USDC.
 
 
 
