@@ -1,4 +1,5 @@
 use crate::open_trade_event::event;
+use scrypto::component::AccountLocker;
 use scrypto::prelude::*;
 /// This blueprint is a trader account - where they can list items and where items are purchased from. Each method calls the event emitter component.
 /// A trader account has two sets of methods for listing and purchases - one for royalty enforced NFTs and one for standard NFTs.
@@ -73,7 +74,8 @@ mod opentrader {
         /// The trading account badge local id. This badge is held by the user and is used to authenticate methods on their trading account.
         auth_key_local: NonFungibleLocalId,
         /// AccountLockers to be added
-        // account_locker: Global<AccountLocker>,
+        account_locker: Global<AccountLocker>,
+        /// Trader Linked Account
         my_account: Global<Account>,
         /// This users trading account component address
         trader_account_component_address: ComponentAddress,
@@ -91,6 +93,7 @@ mod opentrader {
             depositer_admin: Bucket,
             event_manager: Global<event::Event>,
             dapp_global: ComponentAddress,
+            locker: Global<AccountLocker>,
         ) -> Global<OpenTrader> {
             let (trader_address_reservation, trader_component_address) =
                 Runtime::allocate_component_address(OpenTrader::blueprint_id());
@@ -104,7 +107,7 @@ mod opentrader {
                 auth_key_local,
                 auth_key_resource,
                 listings: KeyValueStore::new(),
-                // account_locker,
+                account_locker: locker,
                 my_account,
                 emitter_badge: Vault::with_bucket(emitter_badge),
                 emitter_badge_local,
@@ -409,20 +412,34 @@ mod opentrader {
                     tuple_buckets.0.push(marketplace_revenue);
                 }
 
-                // Sales revenue for the trader is then stored. In the future it would be good to utilise AccountLockers for better UX.
-                let sales_vault_exists = self.sales_revenue.get(&currency).is_some();
+                // Made this redundant in favour of account locker method *
 
-                if sales_vault_exists {
-                    self.sales_revenue
-                        .get_mut(&currency)
-                        .unwrap()
-                        .put(remainder_after_royalty);
-                } else {
-                    let sales_vault = Vault::with_bucket(remainder_after_royalty);
-                    self.sales_revenue.insert(currency, sales_vault);
-                }
-                // self.account_locker
-                //     .store(self.my_account, submit_royalty, true);
+                // // Sales revenue for the trader is then stored. In the future it would be good to utilise AccountLockers for better UX.
+                // let sales_vault_exists = self.sales_revenue.get(&currency).is_some();
+
+                // if sales_vault_exists {
+                //     self.sales_revenue
+                //         .get_mut(&currency)
+                //         .unwrap()
+                //         .put(remainder_after_royalty);
+                // } else {
+                //     let sales_vault = Vault::with_bucket(remainder_after_royalty);
+                //     self.sales_revenue.insert(currency, sales_vault);
+                // }
+
+                //*
+                let locker_proof = self
+                    .emitter_badge
+                    .as_non_fungible()
+                    .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+                // Take the payment for the NFT
+                locker_proof.authorize(|| {
+                    self.account_locker.store(
+                        self.my_account,
+                        remainder_after_royalty.into(),
+                        true,
+                    );
+                });
 
                 // Finally we send the NFT to the account recipient
 
@@ -764,11 +781,46 @@ mod opentrader {
         pub fn purchase_listing(
             &mut self,
             nfgid: NonFungibleGlobalId,
-            payment: FungibleBucket,
+            mut payment: FungibleBucket,
             permission: Proof,
-        ) -> Vec<Bucket> {
-            let mut nft_bucket: Vec<Bucket> = vec![];
+        ) -> (Vec<Bucket>, Vec<Bucket>) {
+            let mut return_buckets: (Vec<Bucket>, Vec<Bucket>) = (vec![], vec![]);
             let listing_event: Listing;
+
+            {
+                let marketplace = permission.resource_address();
+
+                let listing_permission = self
+                    .listings
+                    .get(&nfgid)
+                    .expect("[purchase] Listing not found");
+
+                assert!(
+                    listing_permission
+                        .secondary_seller_permissions
+                        .contains(&marketplace),
+                    "[purchase] Marketplace does not have permission to purchase this listing"
+                );
+            }
+            // We get the marketplace fee rate from the metadata of the proof
+            // We calculate the marketplace fee from the payment amount.
+            // This could be an unsafe decimal at this point - however when taking from the payment we use a safe rounding mode.
+            // If not marketplace fee is set, we set the rate to 0.
+
+            let marketplace_fee_option: Option<Decimal> = permission
+                .skip_checking()
+                .resource_manager()
+                .get_metadata("marketplace_fee")
+                .unwrap();
+
+            let marketplace_fee_rate: Decimal;
+            let marketplace_fee: Decimal;
+            if marketplace_fee_option.is_some() {
+                marketplace_fee_rate = marketplace_fee_option.unwrap();
+                marketplace_fee = payment.amount().checked_mul(marketplace_fee_rate).unwrap();
+            } else {
+                marketplace_fee = dec!(0);
+            };
 
             {
                 let listing = self
@@ -798,29 +850,31 @@ mod opentrader {
                         .get_mut(&nfgid)
                         .expect("[cancel] NFT not found");
 
-                    nft_bucket.push(nft.take_all());
+                    return_buckets.0.push(nft.take_all());
                 }
             }
 
-            let marketplace = permission.resource_address();
+            // Take marketplace fee
+            if marketplace_fee > dec!(0) {
+                let marketplace_payment = payment.take_advanced(
+                    marketplace_fee,
+                    WithdrawStrategy::Rounded(RoundingMode::ToZero),
+                );
 
-            let listing_permission = self
-                .listings
-                .get(&nfgid)
-                .expect("[purchase] Listing not found");
-
-            assert!(
-                listing_permission
-                    .secondary_seller_permissions
-                    .contains(&marketplace),
-                "[purchase] Marketplace does not have permission to purchase this listing"
-            );
+                return_buckets.1.push(marketplace_payment.into());
+            }
 
             // finally we emit a listing event via the event emitter component
             let emitter_proof = self
                 .emitter_badge
                 .as_non_fungible()
                 .create_proof_of_non_fungibles(&indexset![self.emitter_badge_local.clone()]);
+
+            // // Take the payment for the NFT
+            emitter_proof.clone().authorize(|| {
+                self.account_locker
+                    .store(self.my_account, payment.into(), true);
+            });
 
             self.event_manager.purchase_listing_event(
                 listing_event,
@@ -830,10 +884,7 @@ mod opentrader {
 
             self.listings.remove(&nfgid);
 
-            // self.account_locker
-            //     .store(self.my_account, payment.into(), true);
-
-            nft_bucket
+            return_buckets
         }
 
         // utility methods

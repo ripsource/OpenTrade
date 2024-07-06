@@ -74,7 +74,7 @@ mod royal_nft {
         direct_mint => restrict_to: [admin];
         enable_mint_reveal => restrict_to: [admin];
         upload_metadata => restrict_to: [admin];
-
+        creator_admin => PUBLIC;
         mint_reveal => PUBLIC;
         pay_royalty => PUBLIC;
         transfer_royalty_nft_to_dapp => PUBLIC;
@@ -409,6 +409,10 @@ mod royal_nft {
         // helper method for tests
         pub fn resource_address(&self) -> ResourceAddress {
             self.nft_manager.address()
+        }
+
+        pub fn creator_admin(&self) -> ResourceAddress {
+            self.nft_creator_admin
         }
 
         //admin protect direct mint, returns to creator without any payment required.

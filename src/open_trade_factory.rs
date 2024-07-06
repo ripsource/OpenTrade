@@ -26,6 +26,8 @@ mod openhub {
         event_manager: Global<event::Event>,
         /// Hub Component Address
         component_address: ComponentAddress,
+        /// AccountLocker for all traders
+        account_locker: Global<AccountLocker>,
     }
 
     impl OpenHub {
@@ -63,12 +65,24 @@ mod openhub {
 
             let event_manager = Event::create_event_listener(emitter_trader_badge.address());
 
+            let locker_badge_rule = rule!(require(emitter_trader_badge.address()));
+
+            let locker = Blueprint::<AccountLocker>::instantiate(
+                OwnerRole::None,   // owner
+                locker_badge_rule, // storer
+                rule!(deny_all),   // storer_updater
+                rule!(deny_all),   // recoverer
+                rule!(deny_all),   // recoverer_updater
+                None,              // address_reservation
+            );
+
             Self {
                 emitter_trader_badge,
                 open_trader_account_badge,
                 royal_nft_depositer_badge,
                 event_manager,
                 component_address,
+                account_locker: locker,
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
@@ -122,6 +136,7 @@ mod openhub {
                 depositer_permission_badge,
                 self.event_manager,
                 self.component_address,
+                self.account_locker.clone(),
             );
 
             // return the personal trading account badge (and the nfgid of the account for testing purposes)
