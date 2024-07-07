@@ -83,6 +83,9 @@ Due to the atomic guarantees and composable manifests on Radix, its possible tha
 
 _Solution_: Similar to the FAUCET blueprint, we store a hash of the listing tx at runtime and check against this when a purchase method is called. Thank you to Yo for suggesting this. 
 
+### Can you think of another way you could avoid royalties in this system?
+Most common loopholes appear to be addressed by this system if all the settings are configured to their strictest level by a creator in the Royalty Conig, but if you can think of another - I'll give you US $50 - or $100 if you also have the solution... And swapping with someone for their seed phrases/private keys is funny, but not in scope here. 
+
 ## Future areas for development and improvement
 
 - As Royalty-Enforced NFTs are deposit restricted, we have to make direct deposit calls from within Scrypto methods. Currently, the Radix wallet only support 1-layer of transaction information in the GUI manifests and therefore, royalty NFTs don't show up as being depoisted to the user's account. Once we have Allowances, we should be able to update this - however, in the meantime, a temporary solution is to mint a receipt that gives the appearance of the NFT being purchased so that the user can visually verify the NFT that's being deposited to them.
