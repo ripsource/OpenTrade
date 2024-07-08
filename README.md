@@ -81,9 +81,17 @@ _Solution:_ Users can create a trusted permission list of dApps that their NFTs 
 ### Atomic fee skipping
 Due to the atomic guarantees and composable manifests on Radix, its possible that a user could list a Royalty NFT for sale and then purchase it to send to another user all within the same transaction. This would allow a user to do a private deal where they list the NFT for 0 XRD, but don't risk anyone 'sniping' it because they also purchase it to another account at the same time. 
 
-_Solution_: Logic set in trading accounts prevents a Royalty NFT being bought and purchased within the same second.
+_Solution_: Similar to the FAUCET blueprint, we store a hash of the listing tx at runtime and check against this when a purchase method is called. Thank you to Yo for suggesting this. 
 
+### Can you think of another way you could avoid royalties in this system?
+Most common loopholes appear to be addressed by this system if all the settings are configured to their strictest level by a creator in the Royalty Conig, but if you can think of another - I'll give you US $50 - or $100 if you also have the solution... And swapping with someone for their seed phrases/private keys is funny, but not in scope here. 
 
+## Future areas for development and improvement
+
+- As Royalty-Enforced NFTs are deposit restricted, we have to make direct deposit calls from within Scrypto methods. Currently, the Radix wallet only support 1-layer of transaction information in the GUI manifests and therefore, royalty NFTs don't show up as being depoisted to the user's account. Once we have Allowances, we should be able to update this - however, in the meantime, a temporary solution is to mint a receipt that gives the appearance of the NFT being purchased so that the user can visually verify the NFT that's being deposited to them.
+- Currently the basic minting and royalty component example blueprint is quite cumbersome because of its 'feature richness', there is likely some more standardised types of minting examples that could be created for project developers to easily modify what they want - rather than having to grapple with all the details at once.
+- Currently there is no support for multi-listings of the royalty NFTs. While mult-listing of royalty NFTs from the same collection seems straight forward - A decision would need to be made as to whether NFTs from different collections could be listed together and enjoy their respective royalties for the full payment amount.
+- While you can create a listing in any currency, it would be possible to add features that allow a listing in multiple currencies/respective amounts. i.e. You can have a base price in XRD, then a discounted price if paying with USDC.
 
 
 
