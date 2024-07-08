@@ -5,15 +5,16 @@ mod marketplace_manifests;
 mod misc_manifests;
 mod scenario_manifests;
 mod trader_manifests;
-use common::*;
-use creator_manifests::*;
-use marketplace_manifests::*;
-use misc_manifests::*;
-use scenario_manifests::*;
-use trader_manifests::*;
+use crate::common::*;
+use crate::creator_manifests::*;
+use crate::marketplace_manifests::*;
+use crate::misc_manifests::*;
+use crate::scenario_manifests::*;
+use crate::trader_manifests::*;
+use crate::trader_manifests::*;
 
 #[test]
-fn list_and_purchase_royalty_nft() {
+fn royalty_config_changes() {
     let (mut test_runner, user, package) = setup_for_test();
 
     let open_hub_component = instantiate_open_hub(&mut test_runner, &user, package);
@@ -40,11 +41,60 @@ fn list_and_purchase_royalty_nft() {
         depositer_badger.clone(),
     );
 
+    let new_fee = dec!(0.04);
+
+    change_royalty_percentage_fee(
+        &mut test_runner,
+        &user,
+        royalty_nft_component,
+        creator_key,
+        new_fee,
+    );
+
+    lower_maximum_royalty_percentage_fee(
+        &mut test_runner,
+        &user,
+        royalty_nft_component,
+        creator_key,
+        new_fee,
+    );
     enable_mint_reveal(&mut test_runner, &user, royalty_nft_component, creator_key);
 
     mint_royalty_nft(&mut test_runner, &user, royalty_nft_component);
 
     let nft_address = nft_address(&mut test_runner, &user, royalty_nft_component);
+
+    // restrict_currencies_false(&mut test_runner, &user, royalty_nft_component, creator_key);
+
+    restrict_currencies_true(&mut test_runner, &user, royalty_nft_component, creator_key);
+    enable_minimum_royalties(&mut test_runner, &user, royalty_nft_component, creator_key);
+
+    add_permitted_currency(
+        &mut test_runner,
+        &user,
+        royalty_nft_component,
+        creator_key,
+        XRD,
+    );
+
+    set_minimum_royalty_amount(
+        &mut test_runner,
+        &user,
+        royalty_nft_component,
+        creator_key,
+        XRD,
+        dec!(4),
+    );
+
+    deny_all_buyers(&mut test_runner, &user, royalty_nft_component, creator_key);
+
+    add_permissioned_buyer(
+        &mut test_runner,
+        &user,
+        royalty_nft_component,
+        creator_key,
+        marketplace_key.clone(),
+    );
 
     let global_id = create_global_id(nft_address.clone(), 0);
 

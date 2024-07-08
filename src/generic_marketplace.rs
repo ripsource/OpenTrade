@@ -123,7 +123,7 @@ mod generic_marketplace {
             let mut fee_and_nft: (Vec<Bucket>, Vec<Bucket>) =
                 trader_account_address.call_raw::<(Vec<Bucket>, Vec<Bucket>)>(
                     "purchase_listing",
-                    scrypto_args!(nfgid, payment, proof_creation, account_recipient),
+                    scrypto_args!(nfgid, payment, proof_creation),
                 );
 
             let fee_returned = fee_and_nft.0.pop().unwrap();

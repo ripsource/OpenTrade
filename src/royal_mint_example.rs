@@ -84,24 +84,20 @@ mod royal_nft {
         restrict_currencies_false => restrict_to: [admin];
         add_permitted_currency => restrict_to: [admin];
         remove_permitted_currency => restrict_to: [admin];
+        enable_minimum_royalties => restrict_to: [admin];
+        disable_minimum_royalties => restrict_to: [admin];
         set_minimum_royalty_amount => restrict_to: [admin];
         remove_minimum_royalty_amount => restrict_to: [admin];
         add_permissioned_buyer => restrict_to: [admin];
         remove_permissioned_buyer => restrict_to: [admin];
+        limit_dapps_false => restrict_to: [admin];
+        limit_dapps_true => restrict_to: [admin];
         add_permissioned_dapp => restrict_to: [admin];
         remove_permissioned_dapp => restrict_to: [admin];
         allow_all_buyers => restrict_to: [admin];
         deny_all_buyers => restrict_to: [admin];
         lock_royalty_configuration => restrict_to: [admin];
         resource_address => PUBLIC;
-        // These rules require the creator admin proof to be passed.
-        // Technically they can be called with just raw manifests without this component being the caller.
-        change_burn_rule => PUBLIC;
-        lock_burn_rule => PUBLIC;
-        change_metadata_updatable_rule => PUBLIC;
-        lock_metadata_updatable_rule => PUBLIC;
-        lock_minting => PUBLIC;
-        change_mint_rule => PUBLIC;
     }
     }
 
@@ -271,7 +267,10 @@ mod royal_nft {
                 .mint_initial_supply(1);
 
             // create the rules for the creator of the collection
-            let creator_admin_rule = rule!(require(nft_creator_admin.resource_address()));
+            let creator_admin_rule = rule!(require_amount(
+                dec!(1),
+                nft_creator_admin.resource_address()
+            ));
 
             // create the rules for the global caller badge
             let global_caller_badge_rule = rule!(require(global_caller(royalty_component_address)));
@@ -317,49 +316,51 @@ mod royal_nft {
                 metadata_locked_rule = creator_admin_rule.clone();
             }
 
-            let nft_manager = ResourceBuilder::new_integer_non_fungible::<NFT>(OwnerRole::None)
-                .mint_roles(mint_roles! {
-                    minter => global_caller_badge_rule.clone();
-                    minter_updater => creator_admin_rule.clone();
-                })
-                .burn_roles(burn_roles! {
-                    burner => burn_rule;
-                    burner_updater => burn_locked_rule;
-                })
-                //**** REQUIRED FOR ROYALTY COMPATABILITY */
-                // This rule creates the restriction that stops the NFTs from being traded without a royalty payment.
-                // Only the royalty component can bypass this rule and trader accounts can bypass this rule.
-                // If a creator wishes to leave the system completey - they can update the rules via methods on this component.
-                .deposit_roles(deposit_roles! {
-                    depositor => depositer_admin_rule.clone();
-                    depositor_updater => depositer_admin_rule;
-                })
-                .non_fungible_data_update_roles(non_fungible_data_update_roles! {
-                    non_fungible_data_updater => metadata_updatable_rule;
-                    non_fungible_data_updater_updater => metadata_locked_rule;
-                })
-                .metadata(metadata! {
-                    roles {
-                        metadata_locker => creator_admin_rule.clone();
-                        metadata_locker_updater => creator_admin_rule.clone();
-                        metadata_setter => creator_admin_rule.clone();
-                        metadata_setter_updater => creator_admin_rule;
-                    },
-                    init {
-                        "name" => name.to_owned(), updatable;
-                        "description" => description.to_owned(), updatable;
-                        "icon_url" => Url::of(icon_url.clone()), updatable;
-                        //**** REQUIRED FOR ROYALTY COMPATABILITY */
-                        // We include the royalty component address in the NFTs top-level metadata.
-                        // This is important as it means we don't need to programmatically find royalty components on the dApp.
-                        // Instead we can dynamically find the component on the NFTs Resource metadata.
-                        // It's important we don't place this component address on the individual NFTs because
-                        // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
-                        "royalty_component" => royalty_component_address, updatable;
+            let nft_manager = ResourceBuilder::new_integer_non_fungible::<NFT>(OwnerRole::Fixed(
+                creator_admin_rule.clone(),
+            ))
+            .mint_roles(mint_roles! {
+                minter => global_caller_badge_rule.clone();
+                minter_updater => creator_admin_rule.clone();
+            })
+            .burn_roles(burn_roles! {
+                burner => burn_rule;
+                burner_updater => burn_locked_rule;
+            })
+            //**** REQUIRED FOR ROYALTY COMPATABILITY */
+            // This rule creates the restriction that stops the NFTs from being traded without a royalty payment.
+            // Only the royalty component can bypass this rule and trader accounts can bypass this rule.
+            // If a creator wishes to leave the system completey - they can update the rules via methods on this component.
+            .deposit_roles(deposit_roles! {
+                depositor => depositer_admin_rule.clone();
+                depositor_updater => depositer_admin_rule;
+            })
+            .non_fungible_data_update_roles(non_fungible_data_update_roles! {
+                non_fungible_data_updater => metadata_updatable_rule;
+                non_fungible_data_updater_updater => metadata_locked_rule;
+            })
+            .metadata(metadata! {
+                roles {
+                    metadata_locker => creator_admin_rule.clone();
+                    metadata_locker_updater => creator_admin_rule.clone();
+                    metadata_setter => creator_admin_rule.clone();
+                    metadata_setter_updater => creator_admin_rule;
+                },
+                init {
+                    "name" => name.to_owned(), updatable;
+                    "description" => description.to_owned(), updatable;
+                    "icon_url" => Url::of(icon_url.clone()), updatable;
+                    //**** REQUIRED FOR ROYALTY COMPATABILITY */
+                    // We include the royalty component address in the NFTs top-level metadata.
+                    // This is important as it means we don't need to programmatically find royalty components on the dApp.
+                    // Instead we can dynamically find the component on the NFTs Resource metadata.
+                    // It's important we don't place this component address on the individual NFTs because
+                    // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
+                    "royalty_component" => royalty_component_address, updatable;
 
-                    }
-                })
-                .create_with_no_initial_supply();
+                }
+            })
+            .create_with_no_initial_supply();
 
             let component_name = format!("{} OT", name);
 
@@ -692,49 +693,6 @@ mod royal_nft {
             optional_returned_buckets
         }
 
-        // This set of methods can modify the rules on an NFT collection
-        pub fn change_burn_rule(&mut self, burn_rule: AccessRule, admin_proof: Proof) {
-            let admin = admin_proof.check(self.nft_creator_admin);
-
-            admin.authorize(|| {
-                self.nft_manager.set_burnable(burn_rule);
-            })
-        }
-
-        pub fn lock_burn_rule(&mut self, admin_proof: Proof) {
-            let admin = admin_proof.check(self.nft_creator_admin);
-            admin.authorize(|| {
-                self.nft_manager.lock_burnable();
-            })
-        }
-
-        pub fn change_metadata_updatable_rule(
-            &mut self,
-            metadata_updatable_rule: AccessRule,
-            admin_proof: Proof,
-        ) {
-            let admin = admin_proof.check(self.nft_creator_admin);
-            admin.authorize(|| {
-                self.nft_manager
-                    .set_updatable_non_fungible_data(metadata_updatable_rule)
-            })
-        }
-
-        pub fn lock_metadata_updatable_rule(&mut self, admin_proof: Proof) {
-            let admin = admin_proof.check(self.nft_creator_admin);
-            admin.authorize(|| self.nft_manager.lock_updatable_non_fungible_data())
-        }
-
-        pub fn change_mint_rule(&mut self, mint_rule: AccessRule, admin_proof: Proof) {
-            let admin = admin_proof.check(self.nft_creator_admin);
-            admin.authorize(|| self.nft_manager.set_mintable(mint_rule))
-        }
-
-        pub fn lock_minting(&mut self, admin_proof: Proof) {
-            let admin = admin_proof.check(self.nft_creator_admin);
-            admin.authorize(|| self.nft_manager.lock_mintable())
-        }
-
         //
         // These set of methods offer the ability for the creator modify their royalty settings.
         //
@@ -806,6 +764,21 @@ mod royal_nft {
         }
 
         // You can only set minimum royalty amounts if the restricted currency setting is turned on.
+
+        // enable minimum royalties
+
+        pub fn enable_minimum_royalties(&mut self) {
+            assert!(
+                self.royalty_config.limit_currencies,
+                "Restricted currency setting is not turned on"
+            );
+            self.royalty_config.minimum_royalties = true;
+        }
+
+        pub fn disable_minimum_royalties(&mut self) {
+            self.royalty_config.minimum_royalties = false;
+        }
+
         // You can't set minimum amounts if the configuration is locked.
         pub fn set_minimum_royalty_amount(
             &mut self,
@@ -837,7 +810,20 @@ mod royal_nft {
                 .remove(&currency);
         }
 
-        // Permissioned dapps settings only work with advanced royalty enforcement settings.
+        // Permissioned dapps settings only work with limit dapps enabled.
+
+        pub fn limit_dapps_true(&mut self) {
+            assert!(
+                !self.royalty_config.royalty_configuration_locked,
+                "Royalty configuration is locked"
+            );
+            self.royalty_config.limit_dapps = true;
+        }
+
+        pub fn limit_dapps_false(&mut self) {
+            self.royalty_config.limit_dapps = false;
+        }
+
         // You can add even if the configuration is locked.
         pub fn add_permissioned_dapp(&mut self, dapp: ComponentAddress) {
             self.royalty_config.permissioned_dapps.insert(dapp, ());
@@ -873,12 +859,12 @@ mod royal_nft {
                 !self.royalty_config.royalty_configuration_locked,
                 "Royalty configuration is locked"
             );
-            self.royalty_config.limit_buyers = false;
+            self.royalty_config.limit_buyers = true;
         }
 
         // You can allow all buyers even if the configuration is locked
         pub fn allow_all_buyers(&mut self) {
-            self.royalty_config.limit_buyers = true;
+            self.royalty_config.limit_buyers = false;
         }
 
         pub fn lock_royalty_configuration(&mut self) {

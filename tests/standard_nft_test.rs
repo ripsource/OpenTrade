@@ -13,7 +13,7 @@ use scenario_manifests::*;
 use trader_manifests::*;
 
 #[test]
-fn list_and_purchase_royalty_nft() {
+fn list_and_purchase_standard_nft() {
     let (mut test_runner, user, package) = setup_for_test();
 
     let open_hub_component = instantiate_open_hub(&mut test_runner, &user, package);
@@ -32,7 +32,7 @@ fn list_and_purchase_royalty_nft() {
 
     let royalty_config = defaults_royalty_config();
 
-    let (royalty_nft_component, creator_key) = create_royalty_nft(
+    let (royalty_nft_component, creator_key) = create_standard_nft(
         &mut test_runner,
         &user,
         package,
@@ -51,7 +51,7 @@ fn list_and_purchase_royalty_nft() {
     let (trader_auth_resource, trader_auth_local) =
         trader_auth_key(&mut test_runner, &user, trader_component.clone());
 
-    list_royalty_nft(
+    list(
         &mut test_runner,
         &user,
         trader_component.clone(),
@@ -64,7 +64,7 @@ fn list_and_purchase_royalty_nft() {
         vec![marketplace_key.clone()],
     );
 
-    purchase_royalty_nft(
+    purchase_listing(
         &mut test_runner,
         &user,
         marketplace_component,

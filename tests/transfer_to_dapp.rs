@@ -6,6 +6,7 @@ mod misc_manifests;
 mod scenario_manifests;
 mod trader_manifests;
 use common::*;
+use creator_manifests::transfer_royal_nft_to_component;
 use creator_manifests::*;
 use marketplace_manifests::*;
 use misc_manifests::*;
@@ -22,7 +23,7 @@ fn list_and_purchase_royalty_nft() {
 
     let depositer_badger = fetch_depositer_badge(&mut test_runner, &user, open_hub_component);
 
-    let (_trader_key_resource, _trader_key_local, trader_component) =
+    let (trader_key_resource, trader_key_local, trader_component) =
         create_open_trader(&mut test_runner, &user, open_hub_component);
 
     create_event_listener(&mut test_runner, &user, package, virtual_badge.clone());
@@ -51,26 +52,26 @@ fn list_and_purchase_royalty_nft() {
     let (trader_auth_resource, trader_auth_local) =
         trader_auth_key(&mut test_runner, &user, trader_component.clone());
 
-    list_royalty_nft(
+    let dapp_component = create_generic_dapp(&mut test_runner, &user, package);
+
+    let method = "deposit_royalty_nft".to_string();
+
+    transfer_royal_nft_to_component(
         &mut test_runner,
         &user,
-        trader_component.clone(),
-        trader_auth_resource.clone(),
-        trader_auth_local.clone(),
-        nft_address.clone(),
-        NonFungibleLocalId::integer(0),
-        dec!(100),
-        None,
-        vec![marketplace_key.clone()],
+        trader_component,
+        method,
+        dapp_component,
+        nft_address,
+        trader_key_resource,
+        trader_key_local,
     );
 
-    purchase_royalty_nft(
+    withdraw_royalty_nft(
         &mut test_runner,
         &user,
-        marketplace_component,
+        dapp_component,
         trader_component,
-        global_id,
-        dec!(100),
-        None,
-    )
+        nft_address,
+    );
 }

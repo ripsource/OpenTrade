@@ -83,28 +83,17 @@ pub fn create_global_id(nft_address: ResourceAddress, number: u64) -> NonFungibl
     NonFungibleGlobalId::new(nft_address.clone(), local_id.clone())
 }
 
-pub fn change_burn_rule(
+pub fn update_burn_role(
     test_runner: &mut DefaultLedgerSimulator,
     user: &User,
-    component: ComponentAddress,
+    nft_address: ResourceAddress,
     creator_key: ResourceAddress,
     new_rule: AccessRule,
 ) {
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
-        .call_method(
-            user.account,
-            "create_proof_of_amount",
-            manifest_args!(creator_key, dec!(1)),
-        )
-        .pop_from_auth_zone("creator_proof")
-        .with_name_lookup(|builder, lookup| {
-            builder.call_method(
-                component,
-                "change_burn_rule",
-                manifest_args!(new_rule, lookup.proof("creator_proof")),
-            )
-        })
+        .create_proof_from_account_of_amount(user.account, creator_key, dec!(1))
+        .set_role(nft_address, ModuleId::Main, "burner", new_rule)
         .build();
 
     let receipt = test_runner.execute_manifest(
@@ -128,12 +117,12 @@ pub fn lock_burn_rule(
             "create_proof_of_amount",
             manifest_args!(creator_key, dec!(1)),
         )
-        .pop_from_auth_zone("creator_proof")
+        .pop_from_auth_zone("new_proof")
         .with_name_lookup(|builder, lookup| {
             builder.call_method(
                 component,
                 "lock_burn_rule",
-                manifest_args!(lookup.proof("creator_proof")),
+                manifest_args!(lookup.proof("new_proof")),
             )
         })
         .build();
@@ -146,28 +135,22 @@ pub fn lock_burn_rule(
     receipt.expect_commit(true);
 }
 
-pub fn change_metadata_updatable_rule(
+pub fn update_metadata_updatable_rule(
     test_runner: &mut DefaultLedgerSimulator,
     user: &User,
-    component: ComponentAddress,
+    nft_address: ResourceAddress,
     creator_key: ResourceAddress,
     new_rule: AccessRule,
 ) {
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
-        .call_method(
-            user.account,
-            "create_proof_of_amount",
-            manifest_args!(creator_key, dec!(1)),
+        .create_proof_from_account_of_amount(user.account, creator_key, dec!(1))
+        .set_role(
+            nft_address,
+            ModuleId::Main,
+            "non_fungible_data_updater",
+            new_rule,
         )
-        .pop_from_auth_zone("creator_proof")
-        .with_name_lookup(|builder, lookup| {
-            builder.call_method(
-                component,
-                "change_metadata_updatable_rule",
-                manifest_args!(new_rule, lookup.proof("creator_proof")),
-            )
-        })
         .build();
 
     let receipt = test_runner.execute_manifest(
@@ -175,7 +158,10 @@ pub fn change_metadata_updatable_rule(
         vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
     );
 
-    receipt.expect_commit(true);
+    if !receipt.is_commit_success() {
+        println!("{:?}", receipt);
+        panic!("TRANSACTION FAIL");
+    }
 }
 
 pub fn lock_metadata_updatable_rule(
@@ -436,6 +422,60 @@ pub fn remove_permitted_currency(
     receipt.expect_commit(true);
 }
 
+pub fn enable_minimum_royalties(
+    test_runner: &mut DefaultLedgerSimulator,
+    user: &User,
+    component: ComponentAddress,
+    creator_key: ResourceAddress,
+) {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(
+            user.account,
+            "create_proof_of_amount",
+            manifest_args!(creator_key, dec!(1)),
+        )
+        .call_method(component, "enable_minimum_royalties", manifest_args!())
+        .build();
+
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    if !receipt.is_commit_success() {
+        println!("{:?}", receipt);
+        panic!("TRANSACTION FAIL");
+    }
+}
+
+pub fn disable_minimum_royalties(
+    test_runner: &mut DefaultLedgerSimulator,
+    user: &User,
+    component: ComponentAddress,
+    creator_key: ResourceAddress,
+) {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(
+            user.account,
+            "create_proof_of_amount",
+            manifest_args!(creator_key, dec!(1)),
+        )
+        .call_method(component, "disable_minimum_royalties", manifest_args!())
+        .build();
+
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    if !receipt.is_commit_success() {
+        println!("{:?}", receipt);
+        panic!("TRANSACTION FAIL");
+    }
+}
+
 pub fn set_minimum_royalty_amount(
     test_runner: &mut DefaultLedgerSimulator,
     user: &User,
@@ -661,6 +701,51 @@ pub fn lock_royalty_configuration(
             manifest_args!(creator_key, dec!(1)),
         )
         .call_method(component, "lock_royalty_configuration", manifest_args!())
+        .build();
+
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    receipt.expect_commit(true);
+}
+
+pub fn transfer_royal_nft_to_component(
+    test_runner: &mut DefaultLedgerSimulator,
+    user: &User,
+    trader_account: ComponentAddress,
+    custom_method: String,
+    dapp: ComponentAddress,
+    nft_address: ResourceAddress,
+    trader_key_resource: ResourceAddress,
+    trader_key_local: NonFungibleLocalId,
+) {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(
+            user.account,
+            "withdraw",
+            manifest_args!(nft_address, dec!(1)),
+        )
+        .take_all_from_worktop(nft_address, "nft")
+        .call_method(
+            user.account,
+            "create_proof_of_non_fungibles",
+            manifest_args!(trader_key_resource, indexset![trader_key_local.clone()]),
+        )
+        .with_name_lookup(|builder, lookup| {
+            builder.call_method(
+                trader_account,
+                "transfer_royal_nft_to_component",
+                manifest_args!(lookup.bucket("nft"), dapp, custom_method),
+            )
+        })
+        .call_method(
+            user.account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
         .build();
 
     let receipt = test_runner.execute_manifest(

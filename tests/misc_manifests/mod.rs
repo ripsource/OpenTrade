@@ -341,3 +341,127 @@ pub fn create_royalty_nft(
 
     (component, creator_key)
 }
+
+pub fn create_standard_nft(
+    test_runner: &mut DefaultLedgerSimulator,
+    user: &User,
+    package: PackageAddress,
+    royalty_config: RoyaltyConfig,
+    depositer_badge: ResourceAddress,
+) -> (ComponentAddress, ResourceAddress) {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_function(
+            package,
+            "RoyalNFTs",
+            "start_minting_nft",
+            manifest_args!(
+                "Baked Potato NFTs".to_string(),
+                "An Baked Potato NFT collection you can trade with royalties".to_string(),
+                "https://www.allrecipes.com/thmb/c_2gXiAwkO6u1UJCY-1eAVCy0h0=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/54679_perfect-baked-potato-Rita-1x1-1-91711252bb3740088c8ea55c5f9bef1c.jpg".to_string(),
+                "https://www.onceuponachef.com/images/2022/11/baked-potatoes.jpg".to_string(),
+                dec!(100),
+                XRD,
+                1000u64,
+                vec![false, false, true, false, false],
+                depositer_badge,
+                false,
+                royalty_config.royalty_percent,
+                royalty_config.maximum_royalty_percent,
+                royalty_config.limit_buyers,
+                royalty_config.limit_currencies,
+                royalty_config.limit_dapps,
+                royalty_config.minimum_royalties,
+                royalty_config.permissioned_dapps,
+                royalty_config.permissioned_buyers,
+                royalty_config.permitted_currencies,
+                royalty_config.minimum_royalty_amounts,
+            ),
+        )
+        .call_method(
+            user.account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    if !receipt.is_commit_success() {
+        println!("{:?}", receipt);
+        panic!("TRANSACTION FAIL");
+    }
+
+    let component = receipt.expect_commit(true).new_component_addresses()[0];
+
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(component.clone(), "creator_admin", manifest_args!())
+        .build();
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    let creator_key: ResourceAddress = receipt.expect_commit(true).output(1);
+
+    (component, creator_key)
+}
+
+pub fn create_generic_dapp(
+    test_runner: &mut DefaultLedgerSimulator,
+    user: &User,
+    package: PackageAddress,
+) -> ComponentAddress {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_function(package, "Dapp", "start_dapp", manifest_args!())
+        .build();
+
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    if !receipt.is_commit_success() {
+        println!("{:?}", receipt);
+        panic!("TRANSACTION FAIL");
+    }
+
+    receipt.expect_commit_success().new_component_addresses()[0]
+}
+
+pub fn withdraw_royalty_nft(
+    test_runner: &mut DefaultLedgerSimulator,
+    user: &User,
+    dapp_component: ComponentAddress,
+    trader_account: ComponentAddress,
+    nft_address: ResourceAddress,
+) {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(
+            dapp_component,
+            "withdraw_royalty_nft",
+            manifest_args!(nft_address, trader_account),
+        )
+        .call_method(
+            user.account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+
+    let receipt = test_runner.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&user.pubkey)],
+    );
+
+    if !receipt.is_commit_success() {
+        println!("{:?}", receipt);
+        panic!("TRANSACTION FAIL");
+    }
+}

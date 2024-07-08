@@ -253,7 +253,7 @@ pub fn transfer_royal_nft_to_component(
     }
 }
 
-pub fn list_royalty_nft_with_custom_method(
+pub fn list(
     test_runner: &mut DefaultLedgerSimulator,
     user: &User,
     trader_component: ComponentAddress,

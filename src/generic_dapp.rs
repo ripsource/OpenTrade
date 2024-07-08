@@ -38,5 +38,36 @@ mod generic_dapp {
             // Some(vec![bucket1, bucket2, bucket3]), etc.
             None
         }
+
+        pub fn withdraw_royalty_nft(
+            &mut self,
+            resource_address: ResourceAddress,
+            trader_account: ComponentAddress,
+        ) -> Vec<Bucket> {
+            // withdraw the NFT from your dapp
+            // There's no restrictions on withdraws - however you would need to pass this method to a deposit method on the nft collection
+            // to permitt the deposit.
+
+            let vault = self.vaults.get_mut(&resource_address);
+
+            let mut return_bucket: Vec<Bucket> = vec![];
+
+            if let Some(mut vault) = vault {
+                let nft = vault.take_all();
+
+                let call_address: Global<AnyComponent> = Global(ObjectStub::new(
+                    ObjectStubHandle::Global(GlobalAddress::from(trader_account)),
+                ));
+
+                let return_receipt: Bucket =
+                    call_address.call_raw::<Bucket>("deposit_royalty_nft", scrypto_args!(nft));
+
+                return_bucket.push(return_receipt);
+            } else {
+                panic!("NFT not found in vault");
+            };
+
+            return_bucket
+        }
     }
 }

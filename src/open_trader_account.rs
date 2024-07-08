@@ -576,8 +576,8 @@ mod opentrader {
 
             let returned_buckets_full: Option<Vec<Bucket>> =
                 Global::<AnyComponent>::from(call_address).call_raw::<Option<Vec<Bucket>>>(
-                    "transfer_to_component",
-                    scrypto_args!(royalty_nft, custom_method.clone()),
+                    "transfer_royalty_nft_to_dapp",
+                    scrypto_args!(royalty_nft, component, custom_method.clone()),
                 );
 
             returned_buckets_full
