@@ -1,0 +1,33 @@
+CALL_METHOD
+    Address("component_sim1cptxxxxxxxxxfaucetxxxxxxxxx000527798379xxxxxxxxxhkrefh")
+    "lock_fee"
+    Decimal("5000")
+;
+CALL_METHOD
+    Address("account_sim1c8m6h4yv2x9ca0wx5ddtl0nctqmjt2t740wfjgj9w8sdz82zf8ppcr")
+    "create_proof_of_amount"
+    Address("resource_sim1nttgvjp2m8y4qs79k4uqcf7mccfzr0cl3wylu426rwda3vl9sznckm")
+    Decimal("1")
+;
+CALL_METHOD
+    Address("component_sim1cp0enntpraa4ene8ekhcx4nwyq23u3z2403hyj5c42zh89rsengkxf")
+    "direct_mint"
+    Array<Tuple>(
+        Tuple(
+            NonFungibleLocalId("#0#"),
+            Tuple(
+                "scorpion",
+                Array<Map>(
+                    Map<String, String>(
+                        "trait_type" => "scorpion_body",
+                        "value" => "black"
+                    ),
+                    Map<String, String>(
+                        "trait_type" => "scorpion_tail",
+                        "value" => "red"
+                    )
+                )
+            )
+        )
+    )
+;

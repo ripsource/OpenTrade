@@ -252,6 +252,8 @@ mod opentrader {
             let mut tuple_buckets: (Vec<Bucket>, Vec<Bucket>) = (vec![], vec![]);
             let listing_event: Listing;
 
+            let (_nft_resource, nft_local) = nfgid.clone().into_parts();
+
             // First authenticate the proof to check that the marketplace or private buyer has the correct permissions to purchase the NFT
             // We are just using a resource address as validation here - however this could be a more complex check in the future for local ids
             // so that for private deals a brand new resource doesn't need to be created.
@@ -333,7 +335,7 @@ mod opentrader {
                     .get_mut(&nfgid)
                     .expect("[purchase] NFT not found");
 
-                let nft = vault.take_all().as_non_fungible();
+                let nft = vault.as_non_fungible().take_non_fungible(&nft_local);
 
                 let nft_address = nft.resource_address();
 
@@ -669,8 +671,21 @@ mod opentrader {
                 open_trader_account,
             };
 
-            self.nft_vaults
-                .insert(nfgid.clone(), Vault::with_bucket(nft_bucket.into()));
+            let vault_exists = self.nft_vaults.get(&nfgid).is_some();
+
+            if vault_exists {
+                let mut vault = self
+                    .nft_vaults
+                    .get_mut(&nfgid)
+                    .expect("[royal_list] NFT not found");
+                vault.put(nft_bucket.into());
+            } else {
+                self.nft_vaults
+                    .insert(nfgid.clone(), Vault::with_bucket(nft_bucket.into()));
+            }
+
+            // self.nft_vaults
+            //     .insert(nfgid.clone(), Vault::with_bucket(nft_bucket.into()));
 
             self.listings.insert(nfgid.clone(), new_listing.clone());
 
@@ -784,6 +799,8 @@ mod opentrader {
             mut payment: FungibleBucket,
             permission: Proof,
         ) -> (Vec<Bucket>, Vec<Bucket>) {
+            let (_nft_resource, nft_local) = nfgid.clone().into_parts();
+
             let mut return_buckets: (Vec<Bucket>, Vec<Bucket>) = (vec![], vec![]);
             let listing_event: Listing;
 
@@ -850,7 +867,9 @@ mod opentrader {
                         .get_mut(&nfgid)
                         .expect("[cancel] NFT not found");
 
-                    return_buckets.0.push(nft.take_all());
+                    return_buckets
+                        .0
+                        .push(nft.as_non_fungible().take_non_fungible(&nft_local).into());
                 }
             }
 

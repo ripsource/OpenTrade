@@ -11,6 +11,7 @@ use creator_manifests::*;
 use marketplace_manifests::*;
 use misc_manifests::*;
 use scenario_manifests::*;
+use scrypto_test::utils::dump_manifest_to_file_system;
 use trader_manifests::*;
 
 #[test]
@@ -40,6 +41,40 @@ fn list_and_purchase_royalty_nft() {
         royalty_config,
         depositer_badger.clone(),
     );
+
+    let traits: HashMap<String, String> = hashmap!(
+        "trait_type".to_string() => "scorpion_body".to_string(),
+        "value".to_string() => "black".to_string(),
+    );
+
+    let traits2: HashMap<String, String> = hashmap!(
+        "trait_type".to_string() => "scorpion_tail".to_string(),
+        "value".to_string() => "red".to_string(),
+    );
+
+    let nflid = NonFungibleLocalId::integer(0u64);
+
+    let data: Vec<(NonFungibleLocalId, (String, Vec<HashMap<String, String>>))> =
+        vec![(nflid, ("scorpion".to_string(), vec![traits, traits2]))];
+
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(
+            user.account,
+            "create_proof_of_amount",
+            manifest_args!(creator_key, dec!(1)),
+        )
+        .call_method(royalty_nft_component, "direct_mint", manifest_args!(data));
+
+    dump_manifest_to_file_system(
+        manifest.object_names(),
+        &manifest.build(),
+        "./transaction-manifest",
+        Some("direct_mint"),
+        &NetworkDefinition::simulator(),
+    );
+
+    // dump_manifest_to_file_system(naming, manifest, directory_path, name, network_definition);
 
     enable_mint_reveal(&mut test_runner, &user, royalty_nft_component, creator_key);
 

@@ -111,7 +111,6 @@ mod generic_marketplace {
             nfgid: NonFungibleGlobalId,
             payment: FungibleBucket,
             trader_account_address: Global<AnyComponent>,
-            account_recipient: Global<Account>,
         ) -> Vec<Bucket> {
             let nflid = NonFungibleLocalId::integer(1u64.into());
             let proof_creation: Proof = self
@@ -126,7 +125,7 @@ mod generic_marketplace {
                     scrypto_args!(nfgid, payment, proof_creation),
                 );
 
-            let fee_returned = fee_and_nft.0.pop().unwrap();
+            let fee_returned = fee_and_nft.1.pop().unwrap();
 
             let fee_resource = fee_returned.resource_address();
 
@@ -142,7 +141,7 @@ mod generic_marketplace {
                 self.fee_vaults.insert(fee_resource, fee_vault);
             }
 
-            fee_and_nft.1
+            fee_and_nft.0
         }
 
         pub fn get_marketplace_key_address(&self) -> ResourceAddress {

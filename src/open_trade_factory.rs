@@ -104,6 +104,8 @@ mod openhub {
             .globalize()
         }
 
+       
+
         /// Creates a new open trader account with a emitter badge, personal key, and a badge to hold and trade Royalty NFTs
         pub fn create_open_trader(
             &self,

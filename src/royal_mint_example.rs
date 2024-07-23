@@ -62,6 +62,28 @@ struct NFT {
     attributes: Vec<HashMap<String, String>>,
 }
 
+#[derive(ScryptoSbor, NonFungibleData)]
+struct CreatorKey {
+    collection: String,
+    authority: String,
+    minting_component: ComponentAddress,
+    royalty_component: ComponentAddress,
+}
+
+// #[derive(ScryptoSbor, ScryptoEvent)]
+// struct NewOpenTradeMint {
+//     resource_address: ResourceAddress,
+//     minting_component: ComponentAddress,
+//     royalty_component: ComponentAddress,
+// }
+
+// #[derive(ScryptoSbor, ScryptoEvent)]
+// struct NewOpenTradeReveal {
+//     resource_address: ResourceAddress,
+//     minting_component: ComponentAddress,
+//     royalty_component: ComponentAddress,
+// }
+
 #[blueprint]
 mod royal_nft {
 
@@ -191,7 +213,7 @@ mod royal_nft {
             // if restricting the currencies you can then also add minimum amounts for how much royalty you should receive.
             // This is set so that if you require 20 XRD as a minimum, and your %fee is 10% - then atleast a 200 XRD sale would be required.
             minimum_royalty_amounts_input: HashMap<ResourceAddress, Decimal>,
-        ) -> (Global<RoyalNFTs>, FungibleBucket) {
+        ) -> (Global<RoyalNFTs>, NonFungibleBucket) {
             let (nft_address_reservation, royalty_component_address) =
                 Runtime::allocate_component_address(RoyalNFTs::blueprint_id());
 
@@ -248,9 +270,11 @@ mod royal_nft {
             };
 
             let admin_name = format!("{} Admin", name);
+
+            let local_id_string = StringNonFungibleLocalId::new("creator_key".to_owned()).unwrap();
             // create the unique badge for the creator of the collection
-            let nft_creator_admin = ResourceBuilder::new_fungible(OwnerRole::None)
-                .divisibility(0)
+
+            let nft_creator_admin = ResourceBuilder::new_string_non_fungible::<CreatorKey>(OwnerRole::None)
                 .metadata(metadata! {
                     roles {
                         metadata_locker => rule!(deny_all);
@@ -260,11 +284,17 @@ mod royal_nft {
                     },
                     init {
                         "name" => admin_name.to_owned(), locked;
+                        "type" => "OT Creator Key".to_owned(), locked;
                         "icon_url" => Url::of("https://radixopentrade.netlify.app/img/OT_logo_black.webp"), locked;
-                        "mint_component" => royalty_component_address, locked;
+                        "creator_component" => royalty_component_address, locked;
                     }
                 })
-                .mint_initial_supply(1);
+                .mint_initial_supply([(local_id_string, CreatorKey {
+                    collection: name.clone(),
+                    authority: "Admin".to_owned(),
+                    minting_component: royalty_component_address,
+                    royalty_component: royalty_component_address,
+                })]);
 
             // create the rules for the creator of the collection
             let creator_admin_rule = rule!(require_amount(
@@ -350,6 +380,7 @@ mod royal_nft {
                     "name" => name.to_owned(), updatable;
                     "description" => description.to_owned(), updatable;
                     "icon_url" => Url::of(icon_url.clone()), updatable;
+                    "metadata_standard" => "OpenTrade".to_owned(), updatable;
                     //**** REQUIRED FOR ROYALTY COMPATABILITY */
                     // We include the royalty component address in the NFTs top-level metadata.
                     // This is important as it means we don't need to programmatically find royalty components on the dApp.
@@ -357,6 +388,7 @@ mod royal_nft {
                     // It's important we don't place this component address on the individual NFTs because
                     // that would require us knowing the exact NFT Metadata structure to fetch/handle this data within Scrypto.
                     "royalty_component" => royalty_component_address, updatable;
+
 
                 }
             })
