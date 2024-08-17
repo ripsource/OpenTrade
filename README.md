@@ -4,12 +4,28 @@
 # Free and Open Source NFT Creator, Trader, Marketplace Protocol - _In Live Development_ 
 
 ### Try on stokenet: component_tdx_2_1cpark7wnjkk5qv0rgt6qejr9ny6hteck47asj7snz8plme6zjkafwp
+
 Create a new trade account (example):
 ```
 CALL_METHOD
     Address("component_tdx_2_1cpark7wnjkk5qv0rgt6qejr9ny6hteck47asj7snz8plme6zjkafwp")
     "create_open_trader"
     Address("account_tdx_2_12y0xpdypsltq90w07lwnlh2640tg28m8v0cg2yppzlhgnwpndhq47c")
+;
+CALL_METHOD
+    Address("account_tdx_2_12y0xpdypsltq90w07lwnlh2640tg28m8v0cg2yppzlhgnwpndhq47c")
+    "deposit_batch"
+    Expression("ENTIRE_WORKTOP")
+;
+```
+
+Create a marketplace (example):
+```
+CALL_FUNCTION
+    Address("package_tdx_2_1p5jfw2yyg0xzmjlq5ez8ayk83faz6rmj8n4wwh0mgqv4e8zujnx0dj")
+    "GenericMarketplace"
+    "start_marketplace"
+    Decimal("0.02") // set your marketplace fee
 ;
 CALL_METHOD
     Address("account_tdx_2_12y0xpdypsltq90w07lwnlh2640tg28m8v0cg2yppzlhgnwpndhq47c")
