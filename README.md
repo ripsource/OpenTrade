@@ -3,6 +3,21 @@
 
 # Free and Open Source NFT Creator, Trader, Marketplace Protocol - _In Live Development_ 
 
+### Try on stokenet: component_tdx_2_1cpark7wnjkk5qv0rgt6qejr9ny6hteck47asj7snz8plme6zjkafwp
+Create a new trade account (example):
+```
+CALL_METHOD
+    Address("component_tdx_2_1cpark7wnjkk5qv0rgt6qejr9ny6hteck47asj7snz8plme6zjkafwp")
+    "create_open_trader"
+    Address("account_tdx_2_12y0xpdypsltq90w07lwnlh2640tg28m8v0cg2yppzlhgnwpndhq47c")
+;
+CALL_METHOD
+    Address("account_tdx_2_12y0xpdypsltq90w07lwnlh2640tg28m8v0cg2yppzlhgnwpndhq47c")
+    "deposit_batch"
+    Expression("ENTIRE_WORKTOP")
+;
+```
+
 
 This set of blueprints sets out the infrastructure for decentralised NFT trading on Radix, where 1 NFT can be listed on multiple marketplaces at the same time. The intention is to allow for users to have control over their assets, while ensuring marketplace aggregators can earn fees for their services and creators can enforce royalties in a highly configurable way. 
 
