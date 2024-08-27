@@ -33,7 +33,7 @@ mod generic_marketplace {
             let marketplace_listing_key =
                 ResourceBuilder::new_integer_non_fungible::<MarketPlacePermission>(OwnerRole::None)
                     .mint_roles(mint_roles! {
-                        minter => rule!(allow_all);
+                        minter => rule!(require(admin_key.resource_address());
                         minter_updater => rule!(deny_all);
                     })
                     .metadata(metadata! {
