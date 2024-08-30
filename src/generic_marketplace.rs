@@ -24,8 +24,8 @@ mod generic_marketplace {
             let (marketplace_address_reservation, marketplace_component_address) =
                 Runtime::allocate_component_address(GenericMarketplace::blueprint_id());
 
-            // let global_caller_badge_rule =
-            //     rule!(require(global_caller(marketplace_component_address)));
+            let global_caller_badge_rule =
+                rule!(require(global_caller(marketplace_component_address)));
 
             let admin_key = ResourceBuilder::new_integer_non_fungible::<AdminKey>(OwnerRole::None)
                 .mint_initial_supply([(1u64.into(), AdminKey {})]);
@@ -33,7 +33,7 @@ mod generic_marketplace {
             let marketplace_listing_key =
                 ResourceBuilder::new_integer_non_fungible::<MarketPlacePermission>(OwnerRole::None)
                     .mint_roles(mint_roles! {
-                        minter => rule!(require(admin_key.resource_address());
+                        minter => global_caller_badge_rule;
                         minter_updater => rule!(deny_all);
                     })
                     .metadata(metadata! {
