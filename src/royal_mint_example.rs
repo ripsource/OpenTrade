@@ -128,6 +128,8 @@ mod royal_nft {
         lock_royalty_configuration => restrict_to: [admin];
         resource_address => PUBLIC;
         deposit_via_router => PUBLIC;
+        add_virtual_account_admin => restrict_to: [admin];
+        remove_virtual_account_admin => restrict_to: [admin];
     }
     }
 
@@ -140,6 +142,7 @@ mod royal_nft {
         preview_image_url: String,
         description: String,
         reveal_step: bool,
+        initial_sale_cap: u64,
         // reveal data to be uploaded by creator
         metadata: KeyValueStore<NonFungibleLocalId, (String, Vec<HashMap<String, String>>)>,
 
@@ -169,6 +172,13 @@ mod royal_nft {
 
         /// The creator royalty settings
         royalty_config: RoyaltyConfig,
+
+        /// virtual_account temp admin
+        virtual_account_admin: Option<Global<Account>>,
+
+        /// Specify minting venue/marketplace - i.e. specific marketplaces that can mint the NFTs.
+        /// This is useful if a creator wants to allow minting of their NFTs on a specific marketplace.
+        minting_venue: KeyValueStore<ResourceAddress, ()>,
     }
 
     impl RoyalNFTs {
@@ -352,7 +362,7 @@ mod royal_nft {
 
             let metadata_updatable_rule: AccessRule;
             if rules[2] {
-                metadata_updatable_rule = creator_admin_rule.clone();
+                metadata_updatable_rule = global_caller_badge_rule.clone();
             } else {
                 metadata_updatable_rule = rule!(deny_all);
             }
@@ -414,6 +424,8 @@ mod royal_nft {
 
             let component_name = format!("{} OT", name);
 
+            let virtual_account_admin: Option<Global<Account>> = None;
+
             let component_adresss = Self {
                 nft_manager,
                 royalty_component: royalty_component_address,
@@ -422,6 +434,7 @@ mod royal_nft {
                 preview_image_url,
                 description,
                 reveal_step: false,
+                initial_sale_cap: 0,
                 metadata: KeyValueStore::new(),
                 depositer_admin,
                 mint_price,
@@ -431,6 +444,8 @@ mod royal_nft {
                 mint_payments_vault: Vault::new(mint_currency),
                 royalty_vaults: KeyValueStore::new(),
                 royalty_config,
+                virtual_account_admin,
+                minting_venue: KeyValueStore::new(),
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
@@ -492,8 +507,16 @@ mod royal_nft {
         }
 
         // if the NFTs being minted will have a buy - then - reveal step
-        pub fn enable_mint_reveal(&mut self) {
+        pub fn enable_mint_reveal(
+            &mut self,
+            initial_sale_cap: u64,
+            minting_venues: Vec<ResourceAddress>,
+        ) {
+            self.initial_sale_cap = initial_sale_cap;
             self.reveal_step = true;
+            for venue in minting_venues {
+                self.minting_venue.insert(venue, ());
+            }
         }
 
         /// This function allows users to buy a preview of an NFT before it is minted. This acts as a mechanism for random minting.
@@ -503,6 +526,7 @@ mod royal_nft {
             &mut self,
             mut payment: Bucket,
             mut account: Global<Account>,
+            permission: Proof,
         ) -> Vec<Bucket> {
             assert!(
                 self.reveal_step == true,
@@ -520,6 +544,13 @@ mod royal_nft {
             assert!(
                 self.mint_id < self.collection_cap,
                 "[Mint Preview NFT] : Collection cap reached"
+            );
+
+            assert!(
+                self.minting_venue
+                    .get(&permission.resource_address())
+                    .is_some(),
+                "Permission is required to mint this NFT"
             );
 
             self.mint_payments_vault.put(payment.take(self.mint_price));
@@ -570,6 +601,15 @@ mod royal_nft {
             vec![payment, receipt.into()]
         }
 
+        pub fn add_virtual_account_admin(&mut self, account: Global<Account>) {
+            self.virtual_account_admin = Some(account);
+        }
+
+        pub fn remove_virtual_account_admin(&mut self) {
+            let remove_account: Option<Global<Account>> = None;
+            self.virtual_account_admin = remove_account;
+        }
+
         // this functions allows the creator to upload the metadata for the NFTs to conduct the reveal
         pub fn upload_metadata(
             &mut self,
@@ -581,26 +621,67 @@ mod royal_nft {
         }
 
         // this function updates the metadata on an NFT that has already been minted to reveal the collection
-        pub fn mint_reveal(&mut self, nft_proof: Vec<Proof>) {
+        pub fn mint_reveal(
+            &mut self,
+            optional_virt_account: Option<Global<Account>>,
+            optional_admin_badge: Option<Proof>,
+            data: (
+                NonFungibleLocalId,
+                (Vec<String>, Vec<HashMap<String, String>>),
+            ),
+        ) {
             assert!(
                 self.reveal_step == true,
                 "[Mint Reveal] : This NFT doesn't have a reveal step enabled"
             );
-            for proof in nft_proof {
-                let checked_proof = proof.check(self.nft_manager.address());
-                let nft_id = checked_proof.as_non_fungible().non_fungible_local_id();
-                let metadata = self.metadata.get(&nft_id).unwrap();
-                self.nft_manager.update_non_fungible_data(
-                    &nft_id,
-                    "attributes",
-                    metadata.1.clone(),
+
+            // check if a badge is being used for auth or a virtual account
+            if optional_virt_account.is_none() {
+                assert!(
+                    optional_admin_badge.is_some(),
+                    "[Mint Reveal] : Admin badge required to reveal collection"
                 );
-                self.nft_manager.update_non_fungible_data(
-                    &nft_id,
-                    "key_image_url",
-                    Url::of(metadata.0.clone()),
+
+                optional_admin_badge.unwrap().check(self.nft_creator_admin);
+            } else {
+                assert!(
+                    optional_virt_account.is_some(),
+                    "[Mint Reveal] : Virtual account required to reveal collection"
                 );
+
+                let account = optional_virt_account.unwrap();
+
+                {
+                    // Getting the owner role of the account.
+                    let owner_role = account.get_owner_role();
+
+                    // Assert against it.
+                    Runtime::assert_access_rule(owner_role.rule);
+
+                    // Assertion passed - the caller is the owner of the account.
+                }
             }
+            let nft_id = data.0;
+
+            self.nft_manager
+                .update_non_fungible_data(&nft_id, "attributes", data.1 .1.clone());
+            self.nft_manager.update_non_fungible_data(
+                &nft_id,
+                "name",
+                Url::of(&data.1 .0[0].clone()),
+            );
+
+            self.nft_manager.update_non_fungible_data(
+                &nft_id,
+                "description",
+                Url::of(&data.1 .0[1].clone()),
+            );
+
+            self.nft_manager.update_non_fungible_data(
+                &nft_id,
+                "key_image_url",
+                Url::of(&data.1 .0[2].clone()),
+            );
         }
 
         // This function can be called by trader accounts when an NFT from this collection is purchased.

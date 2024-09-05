@@ -6,5 +6,3 @@ pub mod open_trade_event;
 pub mod open_trade_factory;
 pub mod open_trader_account;
 pub mod royal_mint_example;
-// pub mod mint_time;
-// pub mod the_mint;
