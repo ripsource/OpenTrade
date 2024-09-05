@@ -17,10 +17,14 @@ mod generic_marketplace {
         marketplace_admin: ResourceManager,
         marketplace_fee: Decimal,
         fee_vaults: KeyValueStore<ResourceAddress, Vault>,
+        mint_fee: Decimal,
     }
 
     impl GenericMarketplace {
-        pub fn start_marketplace(marketplace_fee: Decimal) -> (Global<GenericMarketplace>, Bucket) {
+        pub fn start_marketplace(
+            marketplace_fee: Decimal,
+            mint_fee: Decimal,
+        ) -> (Global<GenericMarketplace>, Bucket) {
             let (marketplace_address_reservation, marketplace_component_address) =
                 Runtime::allocate_component_address(GenericMarketplace::blueprint_id());
 
@@ -58,6 +62,7 @@ mod generic_marketplace {
                 marketplace_admin: admin_key.resource_manager(),
                 marketplace_fee,
                 fee_vaults: KeyValueStore::new(),
+                mint_fee,
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
@@ -156,6 +161,42 @@ mod generic_marketplace {
             }
 
             fee_and_nft.0
+        }
+
+        pub fn purchase_preview_mint(
+            &mut self,
+            mut payment: Bucket,
+            account: Global<Account>,
+            preview_mint_address: Global<AnyComponent>,
+        ) -> Vec<Bucket> {
+            let fee_amount = payment.amount().checked_mul(self.mint_fee).unwrap();
+
+            let fee =
+                payment.take_advanced(fee_amount, WithdrawStrategy::Rounded(RoundingMode::ToZero));
+
+            let fee_resource = fee.resource_address();
+            let fee_vault_exists = self.fee_vaults.get(&fee_resource).is_some();
+
+            if fee_vault_exists {
+                self.fee_vaults.get_mut(&fee_resource).unwrap().put(fee);
+            } else {
+                let fee_vault = Vault::with_bucket(fee);
+                self.fee_vaults.insert(fee_resource, fee_vault);
+            }
+
+            let nflid = NonFungibleLocalId::integer(1u64.into());
+            let proof_creation: Proof = self
+                .marketplace_listing_key_vault
+                .as_non_fungible()
+                .create_proof_of_non_fungibles(&indexset![nflid])
+                .into();
+
+            let receipt_and_change: Vec<Bucket> = preview_mint_address.call_raw::<Vec<Bucket>>(
+                "purchase_preview_mint",
+                scrypto_args!(payment, account, proof_creation),
+            );
+
+            receipt_and_change
         }
 
         pub fn get_marketplace_key_address(&self) -> ResourceAddress {
