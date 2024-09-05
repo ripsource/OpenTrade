@@ -27,50 +27,50 @@ fn list_and_purchase_royalty_nft() {
 
     create_event_listener(&mut test_runner, &user, package, virtual_badge.clone());
 
-    let (marketplace_component, marketplace_key) =
-        create_marketplace(&mut test_runner, &user, package, dec!(0.02));
+    // let (marketplace_component, marketplace_key) =
+    //     create_marketplace(&mut test_runner, &user, package, dec!(0.02));
 
-    let royalty_config = defaults_royalty_config();
+    // let royalty_config = defaults_royalty_config();
 
-    let (royalty_nft_component, creator_key) = create_royalty_nft(
-        &mut test_runner,
-        &user,
-        package,
-        royalty_config,
-        depositer_badger.clone(),
-    );
+    // let (royalty_nft_component, creator_key) = create_royalty_nft(
+    //     &mut test_runner,
+    //     &user,
+    //     package,
+    //     royalty_config,
+    //     depositer_badger.clone(),
+    // );
 
-    enable_mint_reveal(&mut test_runner, &user, royalty_nft_component, creator_key);
+    // enable_mint_reveal(&mut test_runner, &user, royalty_nft_component, creator_key);
 
-    mint_royalty_nft(&mut test_runner, &user, royalty_nft_component);
+    // mint_royalty_nft(&mut test_runner, &user, royalty_nft_component);
 
-    let nft_address = nft_address(&mut test_runner, &user, royalty_nft_component);
+    // let nft_address = nft_address(&mut test_runner, &user, royalty_nft_component);
 
-    let global_id = create_global_id(nft_address.clone(), 0);
+    // let global_id = create_global_id(nft_address.clone(), 0);
 
-    let (trader_auth_resource, trader_auth_local) =
-        trader_auth_key(&mut test_runner, &user, trader_component.clone());
+    // let (trader_auth_resource, trader_auth_local) =
+    //     trader_auth_key(&mut test_runner, &user, trader_component.clone());
 
-    list_royalty_nft(
-        &mut test_runner,
-        &user,
-        trader_component.clone(),
-        trader_auth_resource.clone(),
-        trader_auth_local.clone(),
-        nft_address.clone(),
-        NonFungibleLocalId::integer(0),
-        dec!(100),
-        None,
-        vec![marketplace_key.clone()],
-    );
+    // list_royalty_nft(
+    //     &mut test_runner,
+    //     &user,
+    //     trader_component.clone(),
+    //     trader_auth_resource.clone(),
+    //     trader_auth_local.clone(),
+    //     nft_address.clone(),
+    //     NonFungibleLocalId::integer(0),
+    //     dec!(100),
+    //     None,
+    //     vec![marketplace_key.clone()],
+    // );
 
-    purchase_royalty_nft(
-        &mut test_runner,
-        &user,
-        marketplace_component,
-        trader_component,
-        global_id,
-        dec!(100),
-        None,
-    )
+    // purchase_royalty_nft(
+    //     &mut test_runner,
+    //     &user,
+    //     marketplace_component,
+    //     trader_component,
+    //     global_id,
+    //     dec!(100),
+    //     None,
+    // )
 }

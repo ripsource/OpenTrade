@@ -45,7 +45,6 @@ mod opentrader {
         cancel_royal_listing => restrict_to: [admin];
         purchase_royal_listing => PUBLIC;
         purchase_listing => PUBLIC;
-        deposit_royalty_nft => PUBLIC;
         fetch_auth_key => PUBLIC;
     }
     }
@@ -583,54 +582,6 @@ mod opentrader {
                 );
 
             returned_buckets_full
-        }
-
-        // When a dapp wants to send an NFT back to the user - they can use this method to deposit it back to the user.
-
-        pub fn deposit_royalty_nft(&mut self, nft: Bucket) -> Bucket {
-            let resource_image: Url = ResourceManager::from_address(nft.resource_address())
-                .get_metadata("icon_url")
-                .unwrap()
-                .unwrap();
-
-            let resource_name: String = ResourceManager::from_address(nft.resource_address())
-                .get_metadata("name")
-                .unwrap()
-                .unwrap();
-
-            let receipt_name = format!(
-                "{} : {}",
-                resource_name,
-                nft.as_non_fungible().non_fungible_local_id().to_string()
-            );
-
-            let receipt = ResourceBuilder::new_fungible(OwnerRole::None)
-            .burn_roles(burn_roles! {
-                burner => rule!(allow_all);
-                burner_updater => rule!(deny_all);
-            })
-                .metadata(metadata! {
-                    roles {
-                        metadata_locker => rule!(deny_all);
-                        metadata_locker_updater => rule!(deny_all);
-                        metadata_setter => rule!(deny_all);
-                        metadata_setter_updater => rule!(deny_all);
-                    },
-                    init {
-                        "name" => receipt_name.to_owned(), locked;
-                        "icon_url" => resource_image, locked;
-                        "resource_address" => nft.resource_address(), locked;
-                        "local_id" => nft.as_non_fungible().non_fungible_local_id().to_string(), locked;
-                        "receipt" => "This is a display receipt to show the NFT being transferred to your account in this transaction. You will see this NFT in your wallet after the transaction. You can burn this token if you wish to remove the receipt from your wallet.".to_owned(), locked;
-                    }
-                })
-                .mint_initial_supply(1);
-
-            self.royal_admin.as_fungible().authorize_with_amount(1, || {
-                self.my_account.try_deposit_or_abort(nft.into(), None);
-            });
-
-            receipt.into()
         }
 
         //

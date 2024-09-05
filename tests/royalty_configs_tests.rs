@@ -31,15 +31,31 @@ fn royalty_config_changes() {
     let (marketplace_component, marketplace_key) =
         create_marketplace(&mut test_runner, &user, package, dec!(0.02));
 
-    let royalty_config = defaults_royalty_config();
+    let mint_factory = create_mint_factory(&mut test_runner, &user, package);
+
+    println!("did this");
+
+    // let royalty_config = defaults_royalty_config();
+
+    let royalty_config2 = defaults_royalty_config();
+
+    // let (royalty_nft_component, creator_key) = create_royalty_nft_direct(
+    //     &mut test_runner,
+    //     &user,
+    //     package,
+    //     royalty_config,
+    //     depositer_badger.clone(),
+    // );
 
     let (royalty_nft_component, creator_key) = create_royalty_nft(
         &mut test_runner,
         &user,
-        package,
-        royalty_config,
+        mint_factory,
+        royalty_config2,
         depositer_badger.clone(),
     );
+
+    println!("royalty_nft_component: {:?}", royalty_nft_component);
 
     let new_fee = dec!(0.04);
 

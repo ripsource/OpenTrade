@@ -61,6 +61,20 @@ mod generic_marketplace {
             }
             .instantiate()
             .prepare_to_globalize(OwnerRole::None)
+            .metadata(metadata! (
+                roles {
+                    metadata_setter => rule!(deny_all);
+                    metadata_setter_updater => rule!(deny_all);
+                    metadata_locker => rule!(deny_all);
+                    metadata_locker_updater => rule!(deny_all);
+                },
+                init {
+                    "name" => "Trove".to_owned(), locked;
+                    "description" => "Trove NFT marketplace".to_owned(), locked;
+                    "dapp_definition" => marketplace_component_address, locked;
+                    "icon_url" => Url::of("https://trove.tools/trove%20square.png"), locked;
+                }
+            ))
             .with_address(marketplace_address_reservation)
             .globalize();
 

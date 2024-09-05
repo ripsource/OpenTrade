@@ -36,9 +36,7 @@ struct RoyaltyConfig {
     // Permissioned dApps - Dapps that you want to allow your NFTs to interact with/be deposited to.
     limit_dapps: bool,
     /// A permission list of components an NFT can be transferred to
-    /// They both need a component address which is given permission for the NFTs to be transferred to.
-    /// As well as a badge resource address that they will need internally in order to deposit the NFT back to a user.
-    permissioned_dapps: KeyValueStore<ComponentAddress, ResourceAddress>,
+    permissioned_dapps: KeyValueStore<ComponentAddress, ()>,
     /// This is useful because private traders could trade the NFTs without paying royalties, so this closes that loophole.
     /// However, this can be turned off if the creator wants to allow any trader to trade the NFTs. If a creator wants to allow private sales,
     /// but still receive royalties - they can set a minimum royalty amount for each currency.
@@ -46,11 +44,6 @@ struct RoyaltyConfig {
     /// A permission list for marketplaces/individual buyers that can trade the NFTs
     /// This requires that a certain badge is shown by the buyer or marketplace in order to purchase an NFT.
     permissioned_buyers: KeyValueStore<ResourceAddress, ()>,
-    /// A method is exposed for transfering the NFT to another account via this royalty component.
-    /// A user could use this deposit_via_router method to transfer an NFT freely to another user account if set to false.
-    /// However, if a user wants to turn this off, we need to still allow permissioned dapps to interact with the NFTs/send them back to users.
-    /// If set true, then the deposit_via_router can only be used for dapps with explicit permission in the permission dapps keyvalue.
-    limit_private_trade: bool,
     /// lock royalty configuration: Option can give traders confidence that the royalty percentage/settings will not change.
     /// There's no method to undo this once set to true. However, right now creators can always take steps to make their
     /// royalties more relaxed even if locked - i.e. remove mininimum royalties, allow all buyers, etc.
@@ -127,11 +120,10 @@ mod royal_nft {
         deny_all_buyers => restrict_to: [admin];
         lock_royalty_configuration => restrict_to: [admin];
         resource_address => PUBLIC;
-        deposit_via_router => PUBLIC;
     }
     }
 
-    struct RoyalNFTs {
+    struct RoyalNfts {
         nft_manager: ResourceManager,
         nft_creator_admin_manager: ResourceManager,
         nft_creator_admin: ResourceAddress,
@@ -171,7 +163,7 @@ mod royal_nft {
         royalty_config: RoyaltyConfig,
     }
 
-    impl RoyalNFTs {
+    impl RoyalNfts {
         pub fn start_minting_nft(
             // top-level resource metadata
             name: String,
@@ -205,27 +197,24 @@ mod royal_nft {
 
             // These represent some advanced setting that creators can enable to heighten the level of royalty enforcement
             // and use to create new reactive/dynamic features for their NFTs.
-            limits: Vec<bool>,
-            // 0. limit_buyers: bool,
-            // 1. limit_currencies: bool,
-            // 2. limit_dapps: bool,
-            // 3. limit_private_trade: bool,
-            // 4. minimum_royalties: bool,
-
+            limit_buyers: bool,
+            limit_currencies: bool,
+            limit_dapps: bool,
+            minimum_royalties: bool,
             // This is relevant for transfers of an NFT to a component/Dapp - not for trading the NFTs.
-            permissioned_dapps_input: HashMap<ComponentAddress, ResourceAddress>,
+            // permissioned_dapps_input: Vec<ComponentAddress>,
 
             // Only applicable if limit buyers is set to true
-            permissioned_buyers_input: Vec<ResourceAddress>,
+            // permissioned_buyers_input: Vec<ResourceAddress>,
 
             // only applicable if you want to restrict the currencies that can be used to pay royalties
-            restricted_currencies_input: Vec<ResourceAddress>,
+            // restricted_currencies_input: Vec<ResourceAddress>,
             // if restricting the currencies you can then also add minimum amounts for how much royalty you should receive.
             // This is set so that if you require 20 XRD as a minimum, and your %fee is 10% - then atleast a 200 XRD sale would be required.
-            minimum_royalty_amounts_input: HashMap<ResourceAddress, Decimal>,
-        ) -> (Global<RoyalNFTs>, NonFungibleBucket, ResourceAddress) {
+            // minimum_royalty_amounts_input: HashMap<ResourceAddress, Decimal>,
+        ) -> (ComponentAddress, NonFungibleBucket, ResourceAddress) {
             let (nft_address_reservation, royalty_component_address) =
-                Runtime::allocate_component_address(RoyalNFTs::blueprint_id());
+                Runtime::allocate_component_address(RoyalNfts::blueprint_id());
 
             assert!(
                 royalty_percent <= Decimal::from(1),
@@ -237,53 +226,45 @@ mod royal_nft {
                 "Royalty percent must be less than maximum royalty"
             );
 
-            let permissioned_dapps: KeyValueStore<ComponentAddress, ResourceAddress> =
-                KeyValueStore::new();
+            let permissioned_dapps: KeyValueStore<ComponentAddress, ()> = KeyValueStore::new();
             let permissioned_buyers: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
             let permitted_currencies: KeyValueStore<ResourceAddress, ()> = KeyValueStore::new();
             let minimum_royalty_amounts: KeyValueStore<ResourceAddress, Decimal> =
                 KeyValueStore::new();
 
-            // 0. limit_buyers: bool,
-            // 1. limit_currencies: bool,
-            // 2. limit_dapps: bool,
-            // 3. limit_private_trade: bool,
-            // 4. minimum_royalties: bool,
+            // if limit_dapps {
+            //     for component_address in permissioned_dapps_input {
+            //         permissioned_dapps.insert(component_address, ());
+            //     }
+            // }
 
-            if limits[2] {
-                for component_address in permissioned_dapps_input {
-                    permissioned_dapps.insert(component_address.0, component_address.1);
-                }
-            }
+            // if limit_buyers {
+            //     for resource_address in permissioned_buyers_input {
+            //         permissioned_buyers.insert(resource_address, ());
+            //     }
+            // }
 
-            if limits[0] {
-                for resource_address in permissioned_buyers_input {
-                    permissioned_buyers.insert(resource_address, ());
-                }
-            }
-
-            if limits[1] {
-                for currency in restricted_currencies_input {
-                    permitted_currencies.insert(currency, ());
-                }
-                for (currency, amount) in minimum_royalty_amounts_input {
-                    minimum_royalty_amounts.insert(currency, amount);
-                }
-            }
+            // if limit_currencies {
+            //     for currency in restricted_currencies_input {
+            //         permitted_currencies.insert(currency, ());
+            //     }
+            //     for (currency, amount) in minimum_royalty_amounts_input {
+            //         minimum_royalty_amounts.insert(currency, amount);
+            //     }
+            // }
 
             // create the royalty config
             let royalty_config = RoyaltyConfig {
                 royalty_percent,
                 maximum_royalty_percent,
-                limit_buyers: limits[0],
-                limit_currencies: limits[1],
-                limit_dapps: limits[2],
-                limit_private_trade: limits[3],
-                minimum_royalties: limits[4],
+                limit_currencies,
                 permitted_currencies,
                 minimum_royalty_amounts,
                 permissioned_dapps,
                 permissioned_buyers,
+                minimum_royalties,
+                limit_buyers,
+                limit_dapps,
                 royalty_configuration_locked: rules[4],
             };
 
@@ -454,7 +435,11 @@ mod royal_nft {
             ))
             .globalize();
 
-            (component_adresss, nft_creator_admin, nft_manager.address())
+            (
+                royalty_component_address,
+                nft_creator_admin,
+                nft_manager.address(),
+            )
         }
 
         // helper method for tests
@@ -743,73 +728,6 @@ mod royal_nft {
             optional_returned_buckets
         }
 
-        pub fn deposit_via_router(
-            &mut self,
-            nft: Bucket,
-            permission: Proof,
-            dapp: ComponentAddress,
-            mut account: Global<Account>,
-        ) -> Bucket {
-            if self.royalty_config.limit_private_trade {
-                assert!(
-                    self.royalty_config.permissioned_dapps.get(&dapp).is_some(),
-                    "This dApp has not been permissioned by the collection creator"
-                );
-
-                let badge = self
-                    .royalty_config
-                    .permissioned_dapps
-                    .get(&dapp)
-                    .unwrap()
-                    .clone();
-
-                let badge_proof = permission.check(badge);
-            }
-            // we can now deposit to a user
-
-            let resource_image: Url = ResourceManager::from_address(nft.resource_address())
-                .get_metadata("icon_url")
-                .unwrap()
-                .unwrap();
-
-            let resource_name: String = ResourceManager::from_address(nft.resource_address())
-                .get_metadata("name")
-                .unwrap()
-                .unwrap();
-
-            let receipt_name = format!(
-                "{} : {}",
-                resource_name,
-                nft.as_non_fungible().non_fungible_local_id().to_string()
-            );
-
-            let receipt = ResourceBuilder::new_fungible(OwnerRole::None)
-        .burn_roles(burn_roles! {
-            burner => rule!(allow_all);
-            burner_updater => rule!(deny_all);
-        })
-            .metadata(metadata! {
-                roles {
-                    metadata_locker => rule!(deny_all);
-                    metadata_locker_updater => rule!(deny_all);
-                    metadata_setter => rule!(deny_all);
-                    metadata_setter_updater => rule!(deny_all);
-                },
-                init {
-                    "name" => receipt_name.to_owned(), locked;
-                    "icon_url" => resource_image, locked;
-                    "resource_address" => nft.resource_address(), locked;
-                    "local_id" => nft.as_non_fungible().non_fungible_local_id().to_string(), locked;
-                    "receipt" => "This is a display receipt to show the NFT being transferred to your account in this transaction. You will see this NFT in your wallet after the transaction. You can burn this token if you wish to remove the receipt from your wallet.".to_owned(), locked;
-                }
-            })
-            .mint_initial_supply(1);
-
-            account.try_deposit_or_abort(nft.into(), None);
-
-            receipt.into()
-        }
-
         //
         // These set of methods offer the ability for the creator modify their royalty settings.
         //
@@ -942,8 +860,8 @@ mod royal_nft {
         }
 
         // You can add even if the configuration is locked.
-        pub fn add_permissioned_dapp(&mut self, dapp: ComponentAddress, badge: ResourceAddress) {
-            self.royalty_config.permissioned_dapps.insert(dapp, badge);
+        pub fn add_permissioned_dapp(&mut self, dapp: ComponentAddress) {
+            self.royalty_config.permissioned_dapps.insert(dapp, ());
         }
 
         // You can't remove dapps if the configuration is locked.
