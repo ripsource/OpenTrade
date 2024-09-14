@@ -67,6 +67,13 @@ mod openhub {
                 .divisibility(0)
                 .mint_initial_supply(1).into();
 
+            // get component
+
+            let (address_reservation, component_address) =
+                Runtime::allocate_component_address(OpenHub::blueprint_id());
+
+            let global_caller_badge_rule = rule!(require(global_caller(component_address)));
+
             let admin_rule = rule!(require(open_hub_admin.resource_address()));
 
             let emitter_trader_badge =
